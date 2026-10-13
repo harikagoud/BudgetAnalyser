@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f6f7f9;
+  --foreground: #0f172a;
+}
+
+body {
+  color: var(--foreground);
+  background:
+    radial-gradient(1200px 400px at 50% -120px, rgba(42, 120, 214, 0.08), transparent 70%),
+    var(--background);
+  background-repeat: no-repeat;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  min-height: 100vh;
+}
+
+::selection {
+  background: #cde2fb;
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid #2a78d6;
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

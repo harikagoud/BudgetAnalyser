@@ -1,0 +1,283 @@
+# API Contracts: Budget Analyser Core
+
+Internal API routes exposed by the Next.js app under `app/api/`. Consumed by
+the app's own UI (no external/public API in scope for v1). All responses are
+JSON. All endpoints run on the local server (`127.0.0.1`) only in dev.
+
+## POST /api/import
+
+Upload and process a CSV/OFX statement (US1, FR-001, FR-002, FR-013).
+
+**Request**: `multipart/form-data`
+- `file`: the CSV/OFX file
+- `accountId`: string (existing account) or `"new"` + `accountName`: string
+
+**Response 200**:
+```json
+{
+  "importBatchId": "clx...",
+  "transactionCount": 48,
+  "duplicateCount": 2,
+  "errorCount": 0,
+  "categories": { "Subscriptions": 3, "Groceries": 12, "Uncategorized": 1 }
+}
+```
+
+**Response 400**: `{ "error": "UNRECOGNIZED_FORMAT" | "EMPTY_FILE" | "PARSE_ERROR", "message": string }`
+— satisfies spec Edge Case: corrupted/empty/unrecognized file must be
+rejected with a clear error, no partial transactions created (atomic import).
+
+---
+
+## GET /api/transactions?month=YYYY-MM&accountId=...
+
+List transactions, optionally filtered.
+
+**Response 200**: `{ "transactions": Transaction[] }` where each item has
+`id, date, amount, merchantRaw, category: { id, name }, categorySource`.
+
+## PATCH /api/transactions/:id
+
+Manually reassign a transaction's category (US1 scenario 3, FR-004).
+
+**Request**: `{ "categoryId": "clx..." }`
+
+**Response 200**: `{ "transaction": Transaction, "ruleUpdated": true }`
+— `ruleUpdated` confirms a `USER` MerchantRule was upserted for this
+merchant so future imports auto-categorize the same way.
+
+---
+
+## GET /api/summary?months=6
+
+Monthly per-category totals and month-over-month deltas (US2, FR-005, FR-006).
+
+**Response 200**:
+```json
+{
+  "months": ["2026-05", "2026-06", "2026-07"],
+  "categories": [
+    {
+      "categoryId": "clx...",
+      "name": "Dining",
+      "isDiscretionary": true,
+      "byMonth": { "2026-05": 180.00, "2026-06": 210.00, "2026-07": 294.00 },
+      "momDeltaAmount": 84.00,
+      "momDeltaPercent": 40.0,
+      "flaggedIncrease": true
+    }
+  ],
+  "insufficientHistory": false
+}
+```
+`insufficientHistory: true` when fewer than 2 months of data exist.
+
+> **Implementation deviation (US1 MVP)**: `categories` is still populated
+> with current-month totals even when `insufficientHistory: true` — only
+> `momDeltaAmount`/`momDeltaPercent`/`flaggedIncrease` are omitted per
+> category in that case. A literal empty `categories: []` would leave the
+> dashboard blank after the very first import (quickstart.md Scenario 1),
+> which only requires one month of data to show per-category totals;
+> trend comparison (US2, requiring 2+ months) is the only thing actually
+> gated by `insufficientHistory`. Edge Case intent (no misleading empty
+> comparison) is preserved by omitting the delta fields, not the totals.
+
+> **Implementation addition (dashboard month picker)**: each category also
+> carries `countByMonth` (`{ "2026-08": 12, ... }`, same keys as `byMonth`) —
+> the per-month transaction count — so the dashboard can show correct counts
+> for whichever month the user selects. The dashboard requests `?months=60`
+> so the picker reaches all imported history.
+
+> **Delta suppression (US2)**: a category omits
+> `momDeltaAmount`/`momDeltaPercent`/`flaggedIncrease` — even when 2+ months
+> of data exist overall — in two cases: (1) the *immediately preceding*
+> month is itself a partial month (its earliest transaction starts after
+> the 1st, per `isPartialMonth` in `data-model.md`) — comparing a full
+> month against a partial one would produce a misleading inflated delta; or
+> (2) the preceding month falls outside the requested `?months=N` window —
+> e.g. `months=1` always returns exactly one month with no delta fields at
+> all, never a delta that cites a "previous month" absent from that same
+> response's `months`/`byMonth`. `insufficientHistory` reflects this
+> per-category check (true when the latest month's categories carry no
+> delta at all), not a raw `months.length < 2` count. Consumers of
+> `flaggedIncrease` (US3's recommendation engine) must treat it as
+> optional/`undefined`, not assume it is always present once
+> `insufficientHistory` is false at the response level — it is present
+> per-category, not response-wide.
+
+---
+
+## GET /api/recommendations
+
+Cost-cutting recommendations derived from the current summary (US3, FR-007, FR-008).
+Accepts the same optional `?months=` query param as `GET /api/summary`.
+
+**Response 200**:
+```json
+{
+  "recommendations": [
+    {
+      "categoryId": "clx...",
+      "categoryName": "Subscriptions",
+      "reason": "Subscriptions is up 35% vs. last month — trimming back to last month's level saves $45.00/mo",
+      "estimatedMonthlySavings": 45.00,
+      "basisMonth": "2026-09"
+    }
+  ],
+  "totalMonthlySavings": 45.00,
+  "projectedAnnualSavings": 540.00
+}
+```
+Empty `recommendations: []` with `totalMonthlySavings: 0` when no
+discretionary overspend is detected (US3 scenario 3).
+
+**Implementation deviation (US3)**: `reason` and `estimatedMonthlySavings` are
+derived directly from the month-over-month delta/threshold mechanism built
+for US2 (`computeMonthlySummaryWithDeltas`, `lib/aggregation/monthly-summary.ts`)
+rather than a separate trailing 3-month-average calculation — a category
+qualifies when it is discretionary AND already `flaggedIncrease` for its
+latest month. `estimatedMonthlySavings` is that category's `momDeltaAmount`
+(the amount spent above last month). The "35% above 3-month average" wording
+in the original contract draft was illustrative example text, not a literal
+computation requirement; no such trailing-average exists anywhere else in the
+codebase. `basisMonth` (`YYYY-MM`) is the month these recommendations were
+computed against — always the latest month in the requested window. Because
+recommendations are derived from the same per-category delta fields as
+`GET /api/summary`, the same window-consistency rule applies: if the
+requested window leaves the latest month with no delta (e.g. `months=1`,
+or a single-month history), `recommendations` is `[]` and totals are `0` —
+this is also the simplest deterministic way to exercise the "no cuts
+recommended" empty state.
+
+---
+
+## GET /api/investments?riskTolerance=moderate
+
+Educational allocation breakdown for the projected annual savings (US4, FR-009, FR-010).
+
+**Response 200**:
+```json
+{
+  "projectedAnnualSavings": 540.00,
+  "riskTolerance": "moderate",
+  "buckets": [
+    { "name": "Emergency Fund", "percent": 25, "amount": 135.00 },
+    { "name": "Retirement Account", "percent": 45, "amount": 243.00 },
+    { "name": "Taxable Brokerage", "percent": 30, "amount": 162.00 }
+  ],
+  "disclaimer": "This is a general, educational breakdown — not personalized financial, legal, or tax advice."
+}
+```
+`buckets[].percent` always sums to 100; `buckets[].amount` always sums to
+`projectedAnnualSavings` (Success Criterion SC-004) — the last bucket absorbs
+any per-bucket rounding remainder rather than being independently rounded,
+so this holds even when `projectedAnnualSavings` doesn't divide evenly.
+
+An explicit but unrecognized `riskTolerance` query value returns **400**
+(`{ "error": "INVALID_RISK_TOLERANCE", "message": "..." }`) rather than
+silently falling back to a default. When `riskTolerance` is omitted
+entirely, the persisted `UserSetting.riskTolerance` is used (default
+`"moderate"` if never set), and is echoed back in the `riskTolerance` field
+so the UI knows which tier to pre-select.
+
+**Implementation addition (US4)**: `GET /api/investments` is read-only and
+never persists — writing the user's risk-tolerance choice is a separate
+endpoint, below.
+
+---
+
+## PUT /api/settings
+
+Generic key/value write for `UserSetting` (data-model.md). Added for US4
+(T050) to persist the risk-tolerance selector across visits; the shape is
+deliberately generic rather than a one-off `/api/risk-tolerance` endpoint,
+since `UserSetting` itself is a generic key/value table. Only `riskTolerance`
+is a recognized key today.
+
+**Request body**: `{ "key": "riskTolerance", "value": "aggressive" }`
+
+**Response 200**: `{ "key": "riskTolerance", "value": "aggressive" }`
+
+**Response 400** when `key` is unrecognized or `value` isn't a valid option
+for that key (e.g. `value` not one of `conservative`/`moderate`/`aggressive`):
+`{ "error": "UNKNOWN_SETTING" | "INVALID_VALUE" | "INVALID_BODY", "message": "..." }`
+
+---
+
+## POST /api/plaid/link-token *(only when `ENABLE_PLAID=true`)*
+
+Create a Plaid Link token to start the sandbox connect flow (US5, FR-011).
+
+**Response 200**: `{ "linkToken": "link-sandbox-..." }`
+
+**Response 404** when `ENABLE_PLAID=false`: feature is not available —
+UI must hide the "Connect an account" entry point in this mode (US5 scenario 3).
+
+**Response 502**: `{ "error": "PLAID_ERROR", "message": "..." }` when the
+Plaid Link token creation call itself fails.
+
+## POST /api/plaid/exchange *(only when `ENABLE_PLAID=true`)*
+
+Exchange a Plaid `public_token` for an `access_token`, encrypt it, and create
+an Account record (US5, FR-011, FR-012).
+
+**Request**: `{ "publicToken": "public-sandbox-...", "accountName": "Chase Checking", "institutionName": "Chase" }`
+
+**Response 200**: `{ "accountId": "clx...", "institutionName": "Chase" }`
+— response body never includes the access token, encrypted or otherwise.
+
+**Implementation addition (US5)**: `institutionName` is an addition to the
+request body beyond the original draft's `{publicToken, accountName}`.
+`react-plaid-link`'s `onSuccess(publicToken, metadata)` callback already
+receives `metadata.institution.name` client-side for free; the route trusts
+and stores it as-is rather than re-deriving it server-side via an extra
+`itemGet` + `institutionsGetById` round-trip, which would be pure overhead
+for a sandbox-only, single-user app (Constitution Principle IV). It is
+optional and nullable — a `null` is stored as-is if Link's metadata omits it.
+
+After creating the Account, the route calls `syncAccountTransactions`
+(`lib/plaid/client.ts`, T055) once as a best-effort initial sync: a fetch
+failure there is logged and reported via `SyncOutcome`, but never blocks or
+fails Account creation — the account is linked either way, and the first
+sync can be retried by any later sync the UI triggers (spec Edge Case:
+sandbox errors must not wipe or block existing/new data).
+
+**Response 404** when `ENABLE_PLAID=false`, same shape as `link-token` above.
+
+**Response 400**: `{ "error": "INVALID_BODY", "message": "..." }` when
+`publicToken` or `accountName` are missing/not strings.
+
+**Response 502**: `{ "error": "PLAID_ERROR", "message": "..." }` when the
+Plaid token exchange itself fails (sandbox unreachable, invalid public
+token, etc.) — distinct from a 500, since this is an upstream failure, not
+an application bug.
+
+> **Known limitation (US5)**: no `cursor` is persisted per Account, so every
+> sync (initial or repeat) re-fetches Plaid's full transaction history from
+> a null cursor and relies on `dedupeKey` (`lib/dedupe.ts`, shared with
+> CSV/OFX import) to recognize already-persisted rows. This also means a
+> transaction manually imported via CSV and later also reported by a
+> Plaid-linked account for the same real-world purchase will NOT collapse
+> into one row — `dedupeKey` includes `accountId`, so cross-source dedupe
+> across a manual and a Plaid account is out of scope for this phase.
+
+> **Implementation addition (US5) — repeated syncs**: there is no dedicated
+> re-sync API route or UI button (`plan.md`'s file tree has neither,
+> Constitution Principle IV). Acceptance Scenario 2 ("new sandbox
+> transactions... pulled in... without duplicate entries on repeated
+> syncs") is instead satisfied by `app/(dashboard)/accounts/page.tsx`
+> (already a `force-dynamic` Server Component): every visit re-syncs every
+> `type=PLAID` Account before rendering. A sync failure is logged and never
+> thrown, so the page still renders whatever was last persisted rather
+> than going blank (sync-failure Edge Case).
+
+---
+
+## Error shape (all endpoints)
+
+```json
+{ "error": "ERROR_CODE", "message": "human-readable message" }
+```
+Error messages and all server logs for these routes MUST NOT include account
+numbers, access tokens, or unredacted raw merchant descriptions beyond what
+is already shown in the authenticated UI response (Constitution Principle VI).

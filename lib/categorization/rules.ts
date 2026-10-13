@@ -1,0 +1,50 @@
+// Default category set and SEED merchant->category keyword rules.
+// Single source of truth, imported by prisma/seed.ts so the database and
+// any future re-seed/reset logic never drift from this list.
+
+export const DEFAULT_CATEGORIES: Array<{ name: string; isDiscretionary: boolean }> = [
+  { name: 'Subscriptions', isDiscretionary: true },
+  { name: 'Groceries', isDiscretionary: false },
+  { name: 'Dining', isDiscretionary: true },
+  { name: 'Car Insurance', isDiscretionary: false },
+  { name: 'Home/EMI', isDiscretionary: false },
+  { name: 'Vacations/Travel', isDiscretionary: true },
+  { name: 'Utilities', isDiscretionary: false },
+  { name: 'Uncategorized', isDiscretionary: false },
+];
+
+export const SEED_MERCHANT_RULES: Array<{ pattern: string; category: string }> = [
+  { pattern: 'costco', category: 'Groceries' },
+  { pattern: 'wal-mart', category: 'Groceries' },
+  { pattern: 'walmart', category: 'Groceries' },
+  { pattern: 'kroger', category: 'Groceries' },
+  { pattern: 'trader joe', category: 'Groceries' },
+  { pattern: 'whole foods', category: 'Groceries' },
+  { pattern: 'safeway', category: 'Groceries' },
+  { pattern: 'netflix', category: 'Subscriptions' },
+  { pattern: 'spotify', category: 'Subscriptions' },
+  { pattern: 'hulu', category: 'Subscriptions' },
+  { pattern: 'disney+', category: 'Subscriptions' },
+  { pattern: 'amazon prime', category: 'Subscriptions' },
+  { pattern: 'icloud', category: 'Subscriptions' },
+  { pattern: 'doordash', category: 'Dining' },
+  { pattern: 'uber eats', category: 'Dining' },
+  { pattern: 'starbucks', category: 'Dining' },
+  { pattern: 'chipotle', category: 'Dining' },
+  { pattern: 'mcdonald', category: 'Dining' },
+  { pattern: 'geico', category: 'Car Insurance' },
+  { pattern: 'progressive', category: 'Car Insurance' },
+  { pattern: 'state farm', category: 'Car Insurance' },
+  { pattern: 'allstate', category: 'Car Insurance' },
+  { pattern: 'mortgage', category: 'Home/EMI' },
+  { pattern: 'home loan', category: 'Home/EMI' },
+  { pattern: 'emi payment', category: 'Home/EMI' },
+  { pattern: 'expedia', category: 'Vacations/Travel' },
+  { pattern: 'airbnb', category: 'Vacations/Travel' },
+  { pattern: 'delta air', category: 'Vacations/Travel' },
+  { pattern: 'marriott', category: 'Vacations/Travel' },
+  { pattern: 'electric', category: 'Utilities' },
+  { pattern: 'water utility', category: 'Utilities' },
+  { pattern: 'gas company', category: 'Utilities' },
+  { pattern: 'internet service', category: 'Utilities' },
+];

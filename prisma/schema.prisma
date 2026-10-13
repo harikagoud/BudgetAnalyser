@@ -1,0 +1,103 @@
+// Prisma schema for Budget Analyser Core.
+// See specs/001-budget-analyser-core/data-model.md for the authoritative
+// field-by-field design this file implements.
+//
+// Notes on connector limitations (SQLite, dev):
+// - SQLite has no native enum type in Prisma; fields that are conceptually
+//   enums (Account.type, Transaction.categorySource, MerchantRule.source,
+//   ImportBatch.format) are modeled as `String` and validated with Zod at
+//   the application boundary (see lib/validation + T032).
+// - SQLite has no native Decimal type in Prisma; monetary `amount` fields
+//   use `Float` (SQLite REAL). All aggregation code rounds to 2 decimal
+//   places to avoid floating-point drift (see lib/aggregation).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// How transactions enter the system for a given Account.
+/// Allowed values: "MANUAL" | "PLAID"
+model Account {
+  id                    String   @id @default(cuid())
+  name                  String
+  type                  String // MANUAL | PLAID
+  plaidItemId           String?
+  accessTokenEncrypted  String? // AES-256-GCM ciphertext; never plaintext, never logged
+  institutionName       String?
+  createdAt             DateTime @default(now())
+  lastSyncedAt          DateTime?
+
+  transactions Transaction[]
+  importBatches ImportBatch[]
+}
+
+/// How a transaction's category was assigned.
+/// Allowed values: "RULE" | "USER_OVERRIDE" | "DEFAULT"
+model Transaction {
+  id                  String   @id @default(cuid())
+  accountId           String
+  account             Account  @relation(fields: [accountId], references: [id])
+  date                DateTime
+  amount              Float // positive = expense, negative = refund/credit
+  merchantRaw         String
+  merchantNormalized  String
+  categoryId          String
+  category            Category @relation(fields: [categoryId], references: [id])
+  categorySource      String // RULE | USER_OVERRIDE | DEFAULT
+  dedupeKey           String   @unique
+  importBatchId       String?
+  importBatch         ImportBatch? @relation(fields: [importBatchId], references: [id])
+  createdAt           DateTime @default(now())
+
+  @@index([accountId, date])
+  @@index([categoryId])
+}
+
+model Category {
+  id              String  @id @default(cuid())
+  name            String  @unique
+  isDiscretionary Boolean
+  isDefault       Boolean @default(false)
+
+  transactions Transaction[]
+  merchantRules MerchantRule[]
+}
+
+/// Source of a merchant->category mapping.
+/// Allowed values: "SEED" | "USER"
+model MerchantRule {
+  id         String   @id @default(cuid())
+  pattern    String
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+  source     String // SEED | USER
+  createdAt  DateTime @default(now())
+
+  @@unique([pattern, source])
+}
+
+model UserSetting {
+  key   String @id
+  value String
+}
+
+/// Statement file format for a given ImportBatch.
+/// Allowed values: "CSV" | "OFX"
+model ImportBatch {
+  id                String   @id @default(cuid())
+  accountId         String
+  account           Account  @relation(fields: [accountId], references: [id])
+  fileName          String
+  format            String // CSV | OFX
+  transactionCount  Int
+  duplicateCount    Int
+  errorCount        Int
+  createdAt         DateTime @default(now())
+
+  transactions Transaction[]
+}
