@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 
 // Prisma client singleton. In Next.js dev mode, modules can be re-evaluated
-// on every hot reload, which would otherwise exhaust SQLite connections by
+// on every hot reload, which would otherwise exhaust database connections by
 // creating a new PrismaClient each time. Caching the instance on `globalThis`
 // (dev only) avoids that.
 const globalForPrisma = globalThis as unknown as {

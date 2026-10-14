@@ -93,7 +93,7 @@ Upload and process a CSV/OFX statement (US1, FR-001, FR-002, FR-013).
 }
 ```
 
-**Response 413**: `{ "error": "FILE_TOO_LARGE" }` — files over 5 MB are rejected
+**Response 413**: `{ "error": "FILE_TOO_LARGE" }` — files over 4 MB are rejected
 before being read. **Response 400** `TOO_MANY_ROWS` — more than 20,000 rows
 (limits live in `lib/import/limits.ts`). If a request that created a new
 account (`accountId: "new"`) fails, that empty account is removed again.

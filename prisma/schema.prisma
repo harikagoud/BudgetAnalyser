@@ -2,22 +2,24 @@
 // See specs/001-budget-analyser-core/data-model.md for the authoritative
 // field-by-field design this file implements.
 //
-// Notes on connector limitations (SQLite, dev):
-// - SQLite has no native enum type in Prisma; fields that are conceptually
-//   enums (Account.type, Transaction.categorySource, MerchantRule.source,
-//   ImportBatch.format) are modeled as `String` and validated with Zod at
-//   the application boundary (see lib/validation + T032).
-// - SQLite has no native Decimal type in Prisma; monetary `amount` fields
-//   use `Float` (SQLite REAL). All aggregation code rounds to 2 decimal
-//   places to avoid floating-point drift (see lib/aggregation).
+// Notes:
+// - Fields that are conceptually enums (Account.type, Transaction.categorySource,
+//   MerchantRule.source, ImportBatch.format) are modeled as `String` and
+//   validated with Zod at the application boundary (see lib/validation + T032).
+// - Monetary `amount` fields use `Float` (double precision). All aggregation
+//   code rounds to 2 decimal places to avoid floating-point drift
+//   (see lib/aggregation).
+// - DATABASE_URL is the (pooled) runtime connection; DIRECT_URL is the
+//   non-pooled connection Prisma Migrate uses (Neon needs both).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 /// A person who signs in. Every Account (and therefore every Transaction,
@@ -90,7 +92,7 @@ model Category {
 /// Allowed values: "SEED" | "USER"
 /// SEED rules are global (userId = null); USER rules belong to one user.
 /// Uniqueness of (pattern, source, userId) is enforced in application code
-/// (SQLite treats NULLs as distinct in unique indexes), see
+/// (SQL treats NULLs as distinct in unique indexes), see
 /// lib/db/seed-defaults.ts and lib/categorization/engine.ts upsertUserRule.
 model MerchantRule {
   id         String   @id @default(cuid())

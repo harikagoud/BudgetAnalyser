@@ -13,7 +13,7 @@ function csvWithRows(n: number): string {
 
 describe('import limits', () => {
   let client: PrismaClient;
-  let cleanup: () => void;
+  let cleanup: () => Promise<void>;
   let userId: string;
   let accountId: string;
 
@@ -25,12 +25,11 @@ describe('import limits', () => {
     accountId = (await client.account.create({ data: { name: 'L', type: 'MANUAL', userId } })).id;
   });
   afterAll(async () => {
-    await client.$disconnect();
-    cleanup();
+    await cleanup(); // drops the schema and disconnects
   });
 
   it('exposes sane limits', () => {
-    expect(MAX_UPLOAD_BYTES).toBe(5 * 1024 * 1024);
+    expect(MAX_UPLOAD_BYTES).toBe(4 * 1024 * 1024);
     expect(MAX_IMPORT_ROWS).toBe(20_000);
   });
 

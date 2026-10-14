@@ -134,7 +134,7 @@ export async function importStatement(
       });
     }
     return created;
-  });
+  }, { timeout: 20_000 }); // default 5 s is tight for 20k rows over a hosted-DB network hop
 
   logger.info(
     {

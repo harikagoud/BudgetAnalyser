@@ -5,7 +5,7 @@ import { computeMonthlySummaryFromDb } from '@/lib/aggregation/monthly-summary';
 
 describe('computeMonthlySummaryFromDb window consistency (US2)', () => {
   let client: PrismaClient;
-  let cleanup: () => void;
+  let cleanup: () => Promise<void>;
   let userId: string;
 
   beforeAll(async () => {
@@ -42,8 +42,7 @@ describe('computeMonthlySummaryFromDb window consistency (US2)', () => {
   });
 
   afterAll(async () => {
-    await client.$disconnect();
-    cleanup();
+    await cleanup(); // drops the schema and disconnects
   });
 
   it('strips the delta from the earliest returned month when its comparison month is outside the window', async () => {

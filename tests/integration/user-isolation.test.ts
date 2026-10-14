@@ -11,7 +11,7 @@ const CSV = ['Date,Description,Amount', '2026-03-02,QQQ MYSTERY VENDOR,41.00'].j
 
 describe('per-user data isolation', () => {
   let client: PrismaClient;
-  let cleanup: () => void;
+  let cleanup: () => Promise<void>;
   let alice: { id: string };
   let bob: { id: string };
   let aliceAccount: string;
@@ -27,8 +27,7 @@ describe('per-user data isolation', () => {
     bobAccount = (await client.account.create({ data: { name: 'B', type: 'MANUAL', userId: bob.id } })).id;
   });
   afterAll(async () => {
-    await client.$disconnect();
-    cleanup();
+    await cleanup(); // drops the schema and disconnects
   });
 
   it('getOwnedAccount returns your account and null for someone else\'s (no IDOR)', async () => {

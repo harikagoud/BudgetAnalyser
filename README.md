@@ -5,24 +5,30 @@ OFX), get automatic categorization, month-over-month trends, cost-cutting
 recommendations, and an educational year-end investment allocation view.
 Everything runs on your machine — nothing is sent anywhere by default.
 
-Stack: Next.js 14 (App Router) · TypeScript · Prisma + SQLite · Tailwind ·
+Stack: Next.js 14 (App Router) · TypeScript · Prisma + PostgreSQL · Tailwind ·
 Recharts · Vitest · pino. Optional Plaid **sandbox** account linking behind a
 feature flag.
 
 ## Setup
 
-Requires Node.js 20 LTS and npm. No external accounts needed.
+Requires Node.js 20 LTS, npm and Docker (for a local Postgres). No external
+accounts needed.
 
 ```bash
 npm install
 cp .env.example .env
 # edit .env: set ENCRYPTION_KEY and AUTH_SECRET (each: openssl rand -base64 32)
-npx prisma migrate dev --name init   # creates prisma/dev.db
+docker run -d --name ba-pg -e POSTGRES_PASSWORD=localdev -e POSTGRES_DB=budget_dev \
+  -p 127.0.0.1:5433:5432 postgres:16-alpine
+docker exec ba-pg psql -U postgres -c 'CREATE DATABASE budget_test;'   # for tests
+npm run db:migrate                   # applies prisma/migrations
 npm run db:seed                      # default categories + merchant rules
 npm run dev                          # http://127.0.0.1:3000
 ```
 
-`.env` defaults: `ENABLE_PLAID=false`, `DATABASE_URL="file:./dev.db"`.
+`.env` defaults: `ENABLE_PLAID=false`; `DATABASE_URL`/`DIRECT_URL` point at the
+container above. Integration tests use `TEST_DATABASE_URL` and create/drop a
+throwaway schema per run.
 
 ## Using it
 
@@ -94,8 +100,7 @@ Notes:
   device and sends it as a Bearer header. Over plain-HTTP LAN (dev only) that
   token and the password travel unencrypted — use a trusted network, and an
   HTTPS backend for anything real.
-- **Not Play Store ready.** A store build needs an HTTPS-hosted backend (move
-  SQLite to a hosted DB), `androidScheme: 'https'` and no
+- **Not Play Store ready.** A store build needs an HTTPS-hosted backend , `androidScheme: 'https'` and no
   cleartext in `capacitor.config.ts`, a release signing key, and a signed AAB.
 - iOS: `npx cap add ios` works on a Mac with full Xcode installed (not just
   Command Line Tools); it has not been built or tested here.
@@ -114,4 +119,5 @@ Notes:
 
 Spec-driven design artifacts live in `specs/001-budget-analyser-core/`
 (`spec.md`, `plan.md`, `tasks.md`, `data-model.md`, `contracts/api.md`,
-`quickstart.md`, `validation-results.md`). Production steps: `docs/PRODUCTION.md`.
+`quickstart.md`, `validation-results.md`). Hosting: `docs/DEPLOY-FREE.md`
+(Vercel + Neon, $0); full checklist: `docs/PRODUCTION.md`.

@@ -22,7 +22,7 @@ export async function seedDefaults(client: PrismaClient): Promise<void> {
   for (const rule of SEED_MERCHANT_RULES) {
     const categoryId = categoryIdByName.get(rule.category);
     if (!categoryId) continue;
-    // SEED rules are global (userId = null). SQLite treats NULLs as distinct
+    // SEED rules are global (userId = null). SQL treats NULLs as distinct
     // in unique indexes, so uniqueness is enforced here instead of by the DB.
     const existing = await client.merchantRule.findFirst({
       where: { pattern: rule.pattern, source: 'SEED', userId: null },

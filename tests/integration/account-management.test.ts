@@ -15,7 +15,7 @@ const CSV = ['Date,Description,Amount', '2026-03-02,STARBUCKS #1,12.00'].join('\
 
 describe('account management (change password / delete account)', () => {
   let client: PrismaClient;
-  let cleanup: () => void;
+  let cleanup: () => Promise<void>;
 
   beforeAll(async () => {
     process.env.AUTH_SECRET = Buffer.alloc(32, 9).toString('base64');
@@ -24,8 +24,7 @@ describe('account management (change password / delete account)', () => {
     cleanup = db.cleanup;
   });
   afterAll(async () => {
-    await client.$disconnect();
-    cleanup();
+    await cleanup(); // drops the schema and disconnects
   });
 
   describe('changePassword', () => {

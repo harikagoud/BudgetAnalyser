@@ -9,7 +9,7 @@ work that is still open.
 - DONE Passwords hashed with scrypt; signed 7-day session tokens (httpOnly cookie on web, Bearer on mobile).
 - DONE Login throttle (5 failures / 15 min per IP+email) and registration throttle (10 / hour per IP) — **in-memory only**, see step 5.
 - DONE Change password (`PUT /api/auth/password`) and delete account (`DELETE /api/auth/account`) with a `/settings` page.
-- DONE Upload limits: 5 MB file, 20,000 rows; failed imports no longer leave an empty account behind.
+- DONE Upload limits: 4 MB file, 20,000 rows; failed imports no longer leave an empty account behind.
 - DONE Security headers (HSTS, nosniff, frame deny, referrer, permissions policy), `X-Powered-By` removed.
 - DONE `GET /api/health` for uptime checks.
 - DONE Production build passes (`npm run build`), 88 tests, `tsc` and `eslint` clean.
@@ -22,22 +22,18 @@ Any Node 20+ host that terminates TLS and runs `npm run build && npm start`
 - Run **one** instance until step 5 is done (throttles are per-process).
 - Point your uptime check at `/api/health`.
 
-## 2. Move the database off SQLite — YOU + TODO
-SQLite is a file on one machine; it can't be shared by several servers and is
-lost with the container.
-1. Provision managed Postgres (Neon, Supabase, RDS, Cloud SQL…); get a `DATABASE_URL`.
-2. In `prisma/schema.prisma` change `provider = "sqlite"` to `"postgresql"`.
-3. Delete `prisma/migrations/` and create a fresh baseline for Postgres
-   (`npx prisma migrate dev --name init` against an empty dev Postgres). The
-   existing SQL is SQLite-specific, and the add-users migration **deletes
-   pre-login data** — acceptable only because no production data exists yet.
-4. Money columns are `Float` (SQLite `REAL`); consider `Decimal` in Postgres.
-   Aggregation code rounds to cents today — re-run the test suite after any change.
-5. Deploy with `npx prisma migrate deploy` and run `npm run db:seed` once
-   (categories + merchant rules).
-6. The integration tests use `prisma db push` on SQLite temp files; point them
-   at a throwaway Postgres schema (or keep a SQLite-only test mode) in CI.
-7. Enable automated backups + point-in-time recovery and **test a restore**.
+## 2. Database — DONE in code, YOU provision
+The app now runs on **PostgreSQL** (schema, a single baseline migration, tests —
+all verified against Postgres 16). What is left is yours:
+1. Provision managed Postgres (Neon free tier is enough to start — see
+   `docs/DEPLOY-FREE.md`); get a pooled `DATABASE_URL` and a direct `DIRECT_URL`.
+2. From your machine, once: `DATABASE_URL=<direct> DIRECT_URL=<direct> npx prisma migrate deploy`
+   then `... npm run db:seed`. Run migrations as a deliberate step, not in the
+   host's build, so preview deploys can never touch the production database.
+3. Money columns stay `Float` (double precision) with rounding to cents in the
+   aggregation code; switch to `Decimal` only if you need exact-cent storage.
+4. Enable backups and **test a restore**. Neon's free plan keeps only 6 hours of
+   history — move to a paid plan (7 days) before you hold real users' data.
 
 ## 3. Secrets — YOU
 Set these in your host's secret manager, never in the repo or image:

@@ -17,7 +17,7 @@ import { encrypt } from '@/lib/security/encryption';
  */
 describe('syncAccountTransactions (US5, T055 integration)', () => {
   let client: PrismaClient;
-  let cleanup: () => void;
+  let cleanup: () => Promise<void>;
   let accountId: string;
   let userId: string;
 
@@ -53,8 +53,7 @@ describe('syncAccountTransactions (US5, T055 integration)', () => {
   });
 
   afterAll(async () => {
-    await client.$disconnect();
-    cleanup();
+    await cleanup(); // drops the schema and disconnects
   });
 
   it('persists fetched transactions, categorizes them, and stamps lastSyncedAt', async () => {

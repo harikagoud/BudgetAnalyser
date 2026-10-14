@@ -7,7 +7,7 @@ import { importStatement } from '@/lib/import/importStatement';
 
 describe('import flow integration', () => {
   let client: PrismaClient;
-  let cleanup: () => void;
+  let cleanup: () => Promise<void>;
   let userId: string;
 
   beforeAll(async () => {
@@ -18,8 +18,7 @@ describe('import flow integration', () => {
   });
 
   afterAll(async () => {
-    await client.$disconnect();
-    cleanup();
+    await cleanup(); // drops the schema and disconnects
   });
 
   it('imports sample-statement.csv into a persisted ImportBatch matching the file row count', async () => {

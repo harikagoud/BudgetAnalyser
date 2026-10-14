@@ -5,7 +5,7 @@ import { authenticateUser, EmailTakenError, registerUser } from '@/lib/auth/serv
 
 describe('auth service (register / authenticate)', () => {
   let client: PrismaClient;
-  let cleanup: () => void;
+  let cleanup: () => Promise<void>;
 
   beforeAll(async () => {
     const db = await createTestDb();
@@ -13,8 +13,7 @@ describe('auth service (register / authenticate)', () => {
     cleanup = db.cleanup;
   });
   afterAll(async () => {
-    await client.$disconnect();
-    cleanup();
+    await cleanup(); // drops the schema and disconnects
   });
 
   it('registers a user: stores a hash (never the plaintext) and lowercases the email', async () => {
