@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { computeMonthlySummaryFromDb } from '@/lib/aggregation/monthly-summary';
+import { getUserId, unauthorized } from '@/lib/auth/request';
 
 export async function GET(req: NextRequest) {
+  const userId = getUserId(req);
+  if (!userId) return unauthorized();
+
   const { searchParams } = new URL(req.url);
   const monthsParam = searchParams.get('months');
   const months = monthsParam ? Number(monthsParam) : 6;
 
-  const summaries = await computeMonthlySummaryFromDb({ months });
+  const summaries = await computeMonthlySummaryFromDb({ userId, months });
 
   if (summaries.length === 0) {
     return NextResponse.json({ months: [], categories: [], insufficientHistory: true });

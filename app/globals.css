@@ -43,3 +43,11 @@ body {
     transition: none !important;
   }
 }
+
+/* Mobile app (Capacitor): keep content clear of the notch / gesture bar. */
+header {
+  padding-top: env(safe-area-inset-top);
+}
+body {
+  padding-bottom: env(safe-area-inset-bottom);
+}

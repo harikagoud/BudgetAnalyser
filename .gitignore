@@ -60,3 +60,6 @@ AGENTS.md
 .code-review-graph/
 # lockfile resolves to Walmart-internal npm registries; regenerate with `npm install` on the public registry
 package-lock.json
+
+# mobile build cache
+/.next-mobile/

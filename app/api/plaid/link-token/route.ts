@@ -1,8 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createLinkToken, isPlaidEnabled } from '@/lib/plaid/client';
 import { logger } from '@/lib/logger';
+import { getUserId, unauthorized } from '@/lib/auth/request';
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const userId = getUserId(req);
+  if (!userId) return unauthorized();
+
   if (!isPlaidEnabled()) {
     return NextResponse.json(
       { error: 'PLAID_DISABLED', message: 'Plaid is not enabled.' },
@@ -11,7 +15,7 @@ export async function POST() {
   }
 
   try {
-    const result = await createLinkToken();
+    const result = await createLinkToken(userId);
     if (!result.enabled) {
       return NextResponse.json(
         { error: 'PLAID_DISABLED', message: 'Plaid is not enabled.' },

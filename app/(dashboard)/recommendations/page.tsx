@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { PageSkeleton } from '@/components/ui/skeleton';
 import { StatCard } from '@/components/ui/stat-card';
 import { formatCurrency } from '@/lib/utils';
+import { apiFetch } from '@/lib/api-base';
 
 interface Recommendation {
   categoryId: string;
@@ -27,7 +28,7 @@ export default function RecommendationsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/recommendations?months=6')
+    apiFetch('/api/recommendations?months=6')
       .then((res) => res.json())
       .then((payload: RecommendationsResponse) => {
         setData(payload);

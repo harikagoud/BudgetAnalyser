@@ -10,6 +10,7 @@ import { PageSkeleton } from '@/components/ui/skeleton';
 import { Select } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
 import { formatCurrency } from '@/lib/utils';
+import { apiFetch } from '@/lib/api-base';
 
 /** "2026-09" -> "September 2026" */
 function formatMonth(yearMonth: string): string {
@@ -54,7 +55,7 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     setLoading(true);
     // Wide window so the month picker can reach all imported history.
-    const summaryRes = await fetch('/api/summary?months=60');
+    const summaryRes = await apiFetch('/api/summary?months=60');
     const summaryData: SummaryResponse = await summaryRes.json();
     setSummary(summaryData);
     setLoading(false);
@@ -75,7 +76,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!selectedMonth) return;
     let cancelled = false;
-    fetch(`/api/transactions?month=${selectedMonth}`)
+    apiFetch(`/api/transactions?month=${selectedMonth}`)
       .then((res) => res.json())
       .then((txData: { transactions: TransactionRow[] }) => {
         if (!cancelled) {
@@ -88,7 +89,7 @@ export default function DashboardPage() {
   }, [selectedMonth, summary]);
 
   async function handleRecategorize(transactionId: string, categoryId: string) {
-    await fetch(`/api/transactions/${transactionId}`, {
+    await apiFetch(`/api/transactions/${transactionId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ categoryId }),

@@ -8,6 +8,7 @@ import { PageSkeleton } from '@/components/ui/skeleton';
 import { Select } from '@/components/ui/select';
 import { TrendLineChart } from '@/components/charts/TrendLineChart';
 import { formatCurrency } from '@/lib/utils';
+import { apiFetch } from '@/lib/api-base';
 
 interface SummaryCategory {
   categoryId: string;
@@ -31,7 +32,7 @@ export default function TrendsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/summary?months=6')
+    apiFetch('/api/summary?months=6')
       .then((res) => res.json())
       .then((data: SummaryResponse) => {
         setSummary(data);

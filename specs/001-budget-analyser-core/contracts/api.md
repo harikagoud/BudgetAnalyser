@@ -4,6 +4,76 @@ Internal API routes exposed by the Next.js app under `app/api/`. Consumed by
 the app's own UI (no external/public API in scope for v1). All responses are
 JSON. All endpoints run on the local server (`127.0.0.1`) only in dev.
 
+## Authentication (all endpoints except `/api/auth/*`)
+
+> **Scope change vs. the original spec**: v1 was specified as single-user and
+> local-first with no login. Publishing to an app store requires multiple
+> users, so accounts and sign-in were added. Every `Account` (and thus every
+> `Transaction`/`ImportBatch`), `UserSetting`, and `USER` merchant rule now
+> belongs to exactly one `User`. `Category` and `SEED` merchant rules remain
+> global. Pre-login data (single anonymous user) is deleted by migration
+> `20261014000000_add_users_and_ownership`.
+
+Every `/api/*` route except `login`, `register` and `logout` requires a valid
+session token, supplied either as the httpOnly `ba_token` cookie (web) or
+`Authorization: Bearer <token>` (mobile app). Otherwise: **401**
+`{ "error": "UNAUTHORIZED", "message": "Sign in required." }`.
+`middleware.ts` verifies the token and injects the user id as the
+`x-user-id` request header (any client-supplied `x-user-id` is discarded);
+handlers re-check it (`getUserId`) as defense in depth. Resources owned by
+another user are indistinguishable from missing ones (**404**), e.g.
+`POST /api/import` with someone else's `accountId`, or
+`PATCH /api/transactions/:id` on someone else's transaction.
+
+Tokens are stateless HMAC-SHA256-signed `{uid, exp}` (7-day expiry, key =
+`AUTH_SECRET`, 32+ bytes). They cannot be revoked before expiry; rotating
+`AUTH_SECRET` signs everyone out. A missing/short `AUTH_SECRET` makes
+protected routes fail closed with **500** `SERVER_MISCONFIGURED`.
+
+### POST /api/auth/register
+**Request**: `{ "email": "a@b.co", "password": "min 8, max 128 chars" }`
+**201**: `{ "user": { "id", "email" }, "token": "..." }` + `Set-Cookie: ba_token=...; HttpOnly; SameSite=Lax`
+**400** `INVALID_BODY` · **409** `EMAIL_TAKEN` (case-insensitive)
+
+### POST /api/auth/login
+**Request**: same shape. **200**: same as register (no 201).
+**401** `INVALID_CREDENTIALS` — identical for wrong password, unknown email
+and malformed input (no user enumeration; unknown emails cost the same
+hashing time). **429** `TOO_MANY_ATTEMPTS` after 5 failures per (IP, email)
+in 15 minutes (in-memory, per server process).
+
+### POST /api/auth/logout
+Clears the cookie. **200** `{ "ok": true }`. Mobile clients discard their token.
+
+### GET /api/auth/me
+**200** `{ "user": { "id", "email" } }` or **401**.
+
+### PUT /api/auth/password *(session required)*
+**Request**: `{ "currentPassword": "...", "newPassword": "8-128 chars" }`
+**200** `{ "ok": true }` · **400** `INVALID_BODY` · **403** `INVALID_PASSWORD`
+(current password wrong; nothing changes). Tokens are stateless, so sessions
+issued before the change remain valid until they expire or `AUTH_SECRET` is
+rotated.
+
+### DELETE /api/auth/account *(session required)*
+**Request**: `{ "password": "..." }` (re-authentication).
+**200** `{ "ok": true }` and the cookie is cleared. Permanently deletes the
+user and all their accounts, transactions, import batches, settings and USER
+rules in one DB transaction. **403** `INVALID_PASSWORD` deletes nothing.
+Required for Google Play's account-deletion policy.
+
+### GET /api/health *(public)*
+**200** `{ "status": "ok" }` when the database answers, else **503**
+`{ "status": "unavailable" }`. For load balancers / uptime checks.
+
+`POST /api/auth/register` is also throttled to 10 attempts per IP per hour
+(**429** `TOO_MANY_ATTEMPTS`; in-memory, per process).
+
+Passwords are hashed with scrypt (per-hash random salt) and never logged;
+`lib/logger.ts` redacts `password`, `passwordHash`, `token`, `authorization`.
+
+---
+
 ## POST /api/import
 
 Upload and process a CSV/OFX statement (US1, FR-001, FR-002, FR-013).
@@ -22,6 +92,14 @@ Upload and process a CSV/OFX statement (US1, FR-001, FR-002, FR-013).
   "categories": { "Subscriptions": 3, "Groceries": 12, "Uncategorized": 1 }
 }
 ```
+
+**Response 413**: `{ "error": "FILE_TOO_LARGE" }` — files over 5 MB are rejected
+before being read. **Response 400** `TOO_MANY_ROWS` — more than 20,000 rows
+(limits live in `lib/import/limits.ts`). If a request that created a new
+account (`accountId: "new"`) fails, that empty account is removed again.
+
+**Response 404** `NOT_FOUND` when `accountId` is not one of the signed-in
+user's accounts.
 
 **Response 400**: `{ "error": "UNRECOGNIZED_FORMAT" | "EMPTY_FILE" | "PARSE_ERROR", "message": string }`
 — satisfies spec Edge Case: corrupted/empty/unrecognized file must be
@@ -265,11 +343,13 @@ an application bug.
 > re-sync API route or UI button (`plan.md`'s file tree has neither,
 > Constitution Principle IV). Acceptance Scenario 2 ("new sandbox
 > transactions... pulled in... without duplicate entries on repeated
-> syncs") is instead satisfied by `app/(dashboard)/accounts/page.tsx`
-> (already a `force-dynamic` Server Component): every visit re-syncs every
-> `type=PLAID` Account before rendering. A sync failure is logged and never
-> thrown, so the page still renders whatever was last persisted rather
-> than going blank (sync-failure Edge Case).
+> syncs") is instead satisfied by `GET /api/accounts` (called by the accounts
+> page on every visit): when Plaid is enabled it re-syncs every `type=PLAID`
+> Account **of the signed-in user** before listing. (This used to live in the
+> accounts page as a Server Component; it moved into the route when the page
+> became a client component for the static mobile build.) A sync failure is
+> logged and never thrown, so the list still returns whatever was last
+> persisted rather than going blank (sync-failure Edge Case).
 
 ---
 

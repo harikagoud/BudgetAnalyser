@@ -1,19 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
-import { createTestDb } from './setup';
+import { createTestDb, createTestUser } from './setup';
 import { computeMonthlySummaryFromDb } from '@/lib/aggregation/monthly-summary';
 
 describe('computeMonthlySummaryFromDb window consistency (US2)', () => {
   let client: PrismaClient;
   let cleanup: () => void;
+  let userId: string;
 
   beforeAll(async () => {
     const db = await createTestDb();
     client = db.client;
     cleanup = db.cleanup;
+    userId = (await createTestUser(client)).id;
 
     const account = await client.account.create({
-      data: { name: 'Window Test Account', type: 'MANUAL' },
+      data: { name: 'Window Test Account', type: 'MANUAL', userId },
     });
     const category = await client.category.findFirstOrThrow({ where: { name: 'Dining' } });
 
@@ -46,7 +48,7 @@ describe('computeMonthlySummaryFromDb window consistency (US2)', () => {
 
   it('strips the delta from the earliest returned month when its comparison month is outside the window', async () => {
     // Full history has 3 months (Jul, Aug, Sep); request only the last 2.
-    const summaries = await computeMonthlySummaryFromDb({ months: 2 }, client);
+    const summaries = await computeMonthlySummaryFromDb({ userId, months: 2 }, client);
 
     expect(summaries.map((s) => s.yearMonth)).toEqual(['2026-08', '2026-09']);
 
@@ -66,7 +68,7 @@ describe('computeMonthlySummaryFromDb window consistency (US2)', () => {
   });
 
   it('omits delta fields entirely for a single-month window (months=1)', async () => {
-    const summaries = await computeMonthlySummaryFromDb({ months: 1 }, client);
+    const summaries = await computeMonthlySummaryFromDb({ userId, months: 1 }, client);
 
     expect(summaries.map((s) => s.yearMonth)).toEqual(['2026-09']);
     const sep = summaries[0];
@@ -74,7 +76,7 @@ describe('computeMonthlySummaryFromDb window consistency (US2)', () => {
   });
 
   it('keeps the true previous-month delta when the full window is requested', async () => {
-    const summaries = await computeMonthlySummaryFromDb({ months: 6 }, client);
+    const summaries = await computeMonthlySummaryFromDb({ userId, months: 6 }, client);
 
     expect(summaries.map((s) => s.yearMonth)).toEqual(['2026-07', '2026-08', '2026-09']);
     const aug = summaries.find((s) => s.yearMonth === '2026-08');

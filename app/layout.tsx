@@ -1,6 +1,6 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
-import { NavBar } from '@/components/NavBar';
+import { AppShell } from '@/components/auth/AppShell';
 import './globals.css';
 
 const geistSans = localFont({
@@ -20,6 +20,12 @@ export const metadata: Metadata = {
     'Import your statements, see categorized monthly spending, and find where to save.',
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover', // lets the mobile app draw under the notch; see safe-area CSS
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -28,8 +34,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <NavBar />
-        <main className="mx-auto max-w-6xl px-6 py-10">{children}</main>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

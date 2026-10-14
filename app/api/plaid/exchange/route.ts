@@ -3,8 +3,12 @@ import { prisma } from '@/lib/db/client';
 import { exchangePublicToken, isPlaidEnabled, syncAccountTransactions } from '@/lib/plaid/client';
 import { encrypt } from '@/lib/security/encryption';
 import { logger } from '@/lib/logger';
+import { getUserId, unauthorized } from '@/lib/auth/request';
 
 export async function POST(req: NextRequest) {
+  const userId = getUserId(req);
+  if (!userId) return unauthorized();
+
   if (!isPlaidEnabled()) {
     return NextResponse.json(
       { error: 'PLAID_DISABLED', message: 'Plaid is not enabled.' },
@@ -46,6 +50,7 @@ export async function POST(req: NextRequest) {
   try {
     const account = await prisma.account.create({
       data: {
+        userId,
         name: accountName,
         type: 'PLAID',
         plaidItemId: exchanged.data.itemId,

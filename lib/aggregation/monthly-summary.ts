@@ -177,12 +177,20 @@ export function computeMonthlySummaryWithDeltas(
  * (e.g. `months=1` always returns a single month with no delta fields).
  */
 export async function computeMonthlySummaryFromDb(
-  options: { accountId?: string; months?: number; increaseThresholdPercent?: number } = {},
+  options: {
+    userId: string;
+    accountId?: string;
+    months?: number;
+    increaseThresholdPercent?: number;
+  },
   client: PrismaClient = defaultPrisma,
 ): Promise<MonthSummaryResult[]> {
   const [transactions, categories] = await Promise.all([
     client.transaction.findMany({
-      where: options.accountId ? { accountId: options.accountId } : undefined,
+      where: {
+        account: { userId: options.userId },
+        ...(options.accountId ? { accountId: options.accountId } : {}),
+      },
       select: { date: true, amount: true, categoryId: true },
       orderBy: { date: 'asc' },
     }),

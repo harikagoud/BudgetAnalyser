@@ -2,17 +2,19 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import type { PrismaClient } from '@prisma/client';
-import { createTestDb } from './setup';
+import { createTestDb, createTestUser } from './setup';
 import { importStatement } from '@/lib/import/importStatement';
 
 describe('import flow integration', () => {
   let client: PrismaClient;
   let cleanup: () => void;
+  let userId: string;
 
   beforeAll(async () => {
     const db = await createTestDb();
     client = db.client;
     cleanup = db.cleanup;
+    userId = (await createTestUser(client)).id;
   });
 
   afterAll(async () => {
@@ -22,7 +24,7 @@ describe('import flow integration', () => {
 
   it('imports sample-statement.csv into a persisted ImportBatch matching the file row count', async () => {
     const account = await client.account.create({
-      data: { name: 'Test Account', type: 'MANUAL' },
+      data: { name: 'Test Account', type: 'MANUAL', userId },
     });
 
     const csvPath = path.resolve(__dirname, '../fixtures/sample-statement.csv');
@@ -30,7 +32,7 @@ describe('import flow integration', () => {
     const expectedRowCount = fileContent.trim().split('\n').length - 1; // minus header
 
     const result = await importStatement(
-      { accountId: account.id, fileName: 'sample-statement.csv', fileContent, format: 'CSV' },
+      { userId, accountId: account.id, fileName: 'sample-statement.csv', fileContent, format: 'CSV' },
       client,
     );
 
@@ -50,12 +52,13 @@ describe('import flow integration', () => {
   // spec.md Edge Case (T061): the same statement uploaded twice must not
   // double-count toward spend totals.
   it('re-uploading the same statement creates zero new transactions', async () => {
-    const account = await client.account.create({ data: { name: 'Reupload', type: 'MANUAL' } });
+    const account = await client.account.create({ data: { name: 'Reupload', type: 'MANUAL', userId } });
     const fileContent = fs.readFileSync(
       path.resolve(__dirname, '../fixtures/sample-statement.csv'),
       'utf8',
     );
     const params = {
+      userId,
       accountId: account.id,
       fileName: 'sample-statement.csv',
       fileContent,
@@ -74,14 +77,14 @@ describe('import flow integration', () => {
   // spec.md Edge Case (T061): a refund row in an imported statement is
   // persisted as a negative amount and reduces its category's total.
   it('persists a negative-amount refund row and nets it against its category', async () => {
-    const account = await client.account.create({ data: { name: 'Refunds', type: 'MANUAL' } });
+    const account = await client.account.create({ data: { name: 'Refunds', type: 'MANUAL', userId } });
     const fileContent = [
       'Date,Description,Amount',
       '2026-03-02,STARBUCKS #1,40.00',
       '2026-03-09,STARBUCKS #1,-15.00',
     ].join('\n');
     const result = await importStatement(
-      { accountId: account.id, fileName: 'refund.csv', fileContent, format: 'CSV' },
+      { userId, accountId: account.id, fileName: 'refund.csv', fileContent, format: 'CSV' },
       client,
     );
     expect(result.transactionCount).toBe(2);

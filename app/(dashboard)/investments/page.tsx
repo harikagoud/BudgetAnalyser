@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/select';
 import { AllocationDonut } from '@/components/charts/AllocationDonut';
 import { InvestmentDisclaimer } from '@/components/disclaimers/InvestmentDisclaimer';
 import type { RiskTolerance } from '@/lib/investments/allocation';
+import { apiFetch } from '@/lib/api-base';
 
 interface Bucket {
   name: string;
@@ -35,7 +36,7 @@ export default function InvestmentsPage() {
   // Initial load: no ?riskTolerance= param, so the server resolves and
   // echoes back the persisted UserSetting (defaulting to "moderate").
   useEffect(() => {
-    fetch('/api/investments')
+    apiFetch('/api/investments')
       .then((res) => res.json())
       .then((payload: InvestmentsResponse) => {
         setData(payload);
@@ -44,12 +45,12 @@ export default function InvestmentsPage() {
   }, []);
 
   async function handleChange(next: RiskTolerance) {
-    const res = await fetch(`/api/investments?riskTolerance=${next}`);
+    const res = await apiFetch(`/api/investments?riskTolerance=${next}`);
     const payload: InvestmentsResponse = await res.json();
     setData(payload);
     // Persist for next visit; fire-and-forget — the UI already reflects the
     // new tier regardless of whether the write lands.
-    fetch('/api/settings', {
+    apiFetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: 'riskTolerance', value: next }),

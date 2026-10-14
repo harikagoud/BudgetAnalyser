@@ -51,14 +51,29 @@ async function getUncategorizedCategoryId(client: PrismaClient): Promise<string>
   return category.id;
 }
 
+/**
+ * Global SEED rules plus this user's own USER rules — never another user's.
+ * Every rule load in the app must go through here.
+ */
+export async function loadRulesForUser(
+  userId: string,
+  client: PrismaClient = defaultPrisma,
+): Promise<MerchantRuleLike[]> {
+  const rules = await client.merchantRule.findMany({
+    where: { OR: [{ source: 'SEED', userId: null }, { source: 'USER', userId }] },
+  });
+  return rules as MerchantRuleLike[];
+}
+
 /** DB-backed categorize: loads all merchant rules and applies the pure logic above. */
 export async function categorize(
   merchantRaw: string,
+  userId: string,
   client: PrismaClient = defaultPrisma,
 ): Promise<CategorizeResult> {
   const merchantNormalized = normalizeMerchant(merchantRaw);
   const [rules, uncategorizedId] = await Promise.all([
-    client.merchantRule.findMany(),
+    loadRulesForUser(userId, client),
     getUncategorizedCategoryId(client),
   ]);
   return categorizeFromRules(merchantNormalized, rules as MerchantRuleLike[], uncategorizedId);
@@ -71,12 +86,16 @@ export async function categorize(
 export async function upsertUserRule(
   merchantRaw: string,
   categoryId: string,
+  userId: string,
   client: PrismaClient = defaultPrisma,
 ): Promise<void> {
   const pattern = normalizeMerchant(merchantRaw);
-  await client.merchantRule.upsert({
-    where: { pattern_source: { pattern, source: 'USER' } },
-    update: { categoryId },
-    create: { pattern, categoryId, source: 'USER' },
+  const existing = await client.merchantRule.findFirst({
+    where: { pattern, source: 'USER', userId },
   });
+  if (existing) {
+    await client.merchantRule.update({ where: { id: existing.id }, data: { categoryId } });
+  } else {
+    await client.merchantRule.create({ data: { pattern, categoryId, source: 'USER', userId } });
+  }
 }

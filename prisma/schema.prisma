@@ -20,10 +20,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// A person who signs in. Every Account (and therefore every Transaction,
+/// ImportBatch) hangs off exactly one User; USER merchant rules and
+/// UserSettings are per-user too. SEED rules/Categories stay global.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique // stored lowercased
+  passwordHash String // scrypt$N$r$p$salt$hash — never plaintext, never logged
+  createdAt    DateTime @default(now())
+
+  accounts      Account[]
+  settings      UserSetting[]
+  merchantRules MerchantRule[]
+}
+
 /// How transactions enter the system for a given Account.
 /// Allowed values: "MANUAL" | "PLAID"
 model Account {
   id                    String   @id @default(cuid())
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name                  String
   type                  String // MANUAL | PLAID
   plaidItemId           String?
@@ -34,6 +50,8 @@ model Account {
 
   transactions Transaction[]
   importBatches ImportBatch[]
+
+  @@index([userId])
 }
 
 /// How a transaction's category was assigned.
@@ -70,20 +88,30 @@ model Category {
 
 /// Source of a merchant->category mapping.
 /// Allowed values: "SEED" | "USER"
+/// SEED rules are global (userId = null); USER rules belong to one user.
+/// Uniqueness of (pattern, source, userId) is enforced in application code
+/// (SQLite treats NULLs as distinct in unique indexes), see
+/// lib/db/seed-defaults.ts and lib/categorization/engine.ts upsertUserRule.
 model MerchantRule {
   id         String   @id @default(cuid())
   pattern    String
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
   source     String // SEED | USER
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
 
-  @@unique([pattern, source])
+  @@index([pattern, source, userId])
 }
 
 model UserSetting {
-  key   String @id
-  value String
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key    String
+  value  String
+
+  @@id([userId, key])
 }
 
 /// Statement file format for a given ImportBatch.

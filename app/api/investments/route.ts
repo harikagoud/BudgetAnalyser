@@ -8,6 +8,7 @@ import {
   RISK_TOLERANCE_VALUES,
   type RiskTolerance,
 } from '@/lib/investments/allocation';
+import { getUserId, unauthorized } from '@/lib/auth/request';
 
 const DEFAULT_RISK_TOLERANCE: RiskTolerance = 'moderate';
 
@@ -27,6 +28,9 @@ function isRiskTolerance(value: string): value is RiskTolerance {
  * with 400 rather than silently falling back to a default.
  */
 export async function GET(req: NextRequest) {
+  const userId = getUserId(req);
+  if (!userId) return unauthorized();
+
   const { searchParams } = new URL(req.url);
   const requested = searchParams.get('riskTolerance');
 
@@ -44,11 +48,13 @@ export async function GET(req: NextRequest) {
   if (requested) {
     riskTolerance = requested;
   } else {
-    const saved = await prisma.userSetting.findUnique({ where: { key: 'riskTolerance' } });
+    const saved = await prisma.userSetting.findUnique({
+      where: { userId_key: { userId, key: 'riskTolerance' } },
+    });
     riskTolerance = saved && isRiskTolerance(saved.value) ? saved.value : DEFAULT_RISK_TOLERANCE;
   }
 
-  const summaries = await computeMonthlySummaryFromDb({ months: 6 });
+  const summaries = await computeMonthlySummaryFromDb({ userId, months: 6 });
   let projectedAnnualSavings = 0;
   if (summaries.length > 0) {
     const latest = summaries[summaries.length - 1];

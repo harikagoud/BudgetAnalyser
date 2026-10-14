@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Budget Analyser</string>
+    <string name="title_activity_main">Budget Analyser</string>
+    <string name="package_name">com.budgetanalyser.app</string>
+    <string name="custom_url_scheme">com.budgetanalyser.app</string>
+</resources>

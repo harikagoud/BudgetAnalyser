@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState, FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { apiFetch } from '@/lib/api-base';
 
 interface ImportResult {
   importBatchId: string;
@@ -13,7 +14,7 @@ interface ImportResult {
   categories: Record<string, number>;
 }
 
-export function UploadForm() {
+export function UploadForm({ onImported }: { onImported?: () => void }) {
   const router = useRouter();
   const [accountName, setAccountName] = useState('My Account');
   const [file, setFile] = useState<File | null>(null);
@@ -36,7 +37,7 @@ export function UploadForm() {
     formData.set('accountName', accountName || 'My Account');
 
     try {
-      const res = await fetch('/api/import', { method: 'POST', body: formData });
+      const res = await apiFetch('/api/import', { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) {
         setStatus('error');
@@ -46,6 +47,7 @@ export function UploadForm() {
       setResult(data);
       setStatus('done');
       router.refresh();
+      onImported?.();
     } catch {
       setStatus('error');
       setError('Network error while uploading.');

@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db/client';
 import { upsertUserRule } from '@/lib/categorization/engine';
+import { getUserId, unauthorized } from '@/lib/auth/request';
 
 const PatchSchema = z.object({ categoryId: z.string().min(1) });
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const userId = getUserId(req);
+  if (!userId) return unauthorized();
+
   const body = await req.json().catch(() => null);
   const parsed = PatchSchema.safeParse(body);
   if (!parsed.success) {
@@ -15,7 +19,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     );
   }
 
-  const existing = await prisma.transaction.findUnique({ where: { id: params.id } });
+  // findFirst scoped to the owner: someone else's transaction is a 404, not a 403.
+  const existing = await prisma.transaction.findFirst({
+    where: { id: params.id, account: { userId } },
+  });
   if (!existing) {
     return NextResponse.json(
       { error: 'NOT_FOUND', message: 'Transaction not found.' },
@@ -29,7 +36,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     include: { category: { select: { id: true, name: true } } },
   });
 
-  await upsertUserRule(existing.merchantRaw, parsed.data.categoryId);
+  await upsertUserRule(existing.merchantRaw, parsed.data.categoryId, userId);
 
   return NextResponse.json({
     transaction: {

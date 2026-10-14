@@ -1,11 +1,12 @@
 import { prisma as defaultPrisma } from '@/lib/db/client';
 import type { PrismaClient } from '@prisma/client';
 import { parseCsv, ParseError } from '@/lib/parsers/csv';
+import { MAX_IMPORT_ROWS } from '@/lib/import/limits';
 import { parseOfx } from '@/lib/parsers/ofx';
 import {
   categorizeFromRules,
+  loadRulesForUser,
   normalizeMerchant,
-  type MerchantRuleLike,
 } from '@/lib/categorization/engine';
 import { computeDedupeKey } from '@/lib/dedupe';
 import { logger } from '@/lib/logger';
@@ -13,6 +14,7 @@ import { logger } from '@/lib/logger';
 export { ParseError };
 
 export interface ImportParams {
+  userId: string;
   accountId: string;
   fileName: string;
   fileContent: string;
@@ -39,8 +41,15 @@ export async function importStatement(
   const rows =
     params.format === 'CSV' ? parseCsv(params.fileContent) : parseOfx(params.fileContent);
 
+  if (rows.length > MAX_IMPORT_ROWS) {
+    throw new ParseError(
+      'TOO_MANY_ROWS',
+      `This statement has ${rows.length} rows; the limit is ${MAX_IMPORT_ROWS}. Split it into smaller files.`,
+    );
+  }
+
   const [rules, categories] = await Promise.all([
-    client.merchantRule.findMany(),
+    loadRulesForUser(params.userId, client),
     client.category.findMany(),
   ]);
   const uncategorized = categories.find((c) => c.name === 'Uncategorized');
@@ -87,7 +96,7 @@ export async function importStatement(
     const merchantNormalized = normalizeMerchant(row.merchantRaw);
     const { categoryId, source } = categorizeFromRules(
       merchantNormalized,
-      rules as MerchantRuleLike[],
+      rules,
       uncategorized.id,
     );
     const categoryName = categoryNameById.get(categoryId) ?? 'Uncategorized';

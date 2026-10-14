@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/client';
 import { RISK_TOLERANCE_VALUES } from '@/lib/investments/allocation';
+import { getUserId, unauthorized } from '@/lib/auth/request';
 
 /**
  * Generic key/value persistence for `UserSetting` (data-model.md). Only one
@@ -13,6 +14,9 @@ const ALLOWED_KEYS: Record<string, readonly string[]> = {
 };
 
 export async function PUT(req: NextRequest) {
+  const userId = getUserId(req);
+  if (!userId) return unauthorized();
+
   const body = await req.json().catch(() => null);
   const key = body?.key;
   const value = body?.value;
@@ -39,8 +43,8 @@ export async function PUT(req: NextRequest) {
   }
 
   await prisma.userSetting.upsert({
-    where: { key },
-    create: { key, value },
+    where: { userId_key: { userId, key } },
+    create: { userId, key, value },
     update: { value },
   });
 

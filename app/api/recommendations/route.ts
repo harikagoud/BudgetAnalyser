@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { computeMonthlySummaryFromDb } from '@/lib/aggregation/monthly-summary';
 import { generate } from '@/lib/recommendations/engine';
+import { getUserId, unauthorized } from '@/lib/auth/request';
 
 /**
  * Cost-cutting recommendations derived from the current summary (US3,
@@ -10,11 +11,14 @@ import { generate } from '@/lib/recommendations/engine';
  * exercise the "no cuts recommended" empty state.
  */
 export async function GET(req: NextRequest) {
+  const userId = getUserId(req);
+  if (!userId) return unauthorized();
+
   const { searchParams } = new URL(req.url);
   const monthsParam = searchParams.get('months');
   const months = monthsParam ? Number(monthsParam) : 6;
 
-  const summaries = await computeMonthlySummaryFromDb({ months });
+  const summaries = await computeMonthlySummaryFromDb({ userId, months });
 
   if (summaries.length === 0) {
     return NextResponse.json({

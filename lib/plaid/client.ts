@@ -2,7 +2,12 @@ import { Configuration, CountryCode, PlaidApi, PlaidEnvironments, Products } fro
 import { prisma as defaultPrisma } from '@/lib/db/client';
 import type { PrismaClient } from '@prisma/client';
 import { decrypt } from '@/lib/security/encryption';
-import { categorizeFromRules, normalizeMerchant, type MerchantRuleLike } from '@/lib/categorization/engine';
+import {
+  categorizeFromRules,
+  loadRulesForUser,
+  normalizeMerchant,
+  type MerchantRuleLike,
+} from '@/lib/categorization/engine';
 import { computeDedupeKey } from '@/lib/dedupe';
 import { logger } from '@/lib/logger';
 
@@ -240,7 +245,7 @@ export async function syncAccountTransactions(
     }
 
     const [rules, categories] = await Promise.all([
-      client.merchantRule.findMany(),
+      loadRulesForUser(account.userId, client),
       client.category.findMany(),
     ]);
     const uncategorized = categories.find((c) => c.name === 'Uncategorized');
@@ -260,7 +265,7 @@ export async function syncAccountTransactions(
     const { toCreate, duplicateCount, categoryCounts } = applyPlaidTransactions(
       fetched.data,
       accountId,
-      rules as MerchantRuleLike[],
+      rules,
       categories,
       uncategorized.id,
       existingKeys,

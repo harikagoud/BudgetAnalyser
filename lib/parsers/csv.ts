@@ -6,9 +6,11 @@ export interface ParsedRow {
   amount: number;
 }
 
+export type ParseErrorCode = 'EMPTY_FILE' | 'PARSE_ERROR' | 'TOO_MANY_ROWS' | 'FILE_TOO_LARGE';
+
 export class ParseError extends Error {
-  code: 'EMPTY_FILE' | 'PARSE_ERROR';
-  constructor(code: 'EMPTY_FILE' | 'PARSE_ERROR', message: string) {
+  code: ParseErrorCode;
+  constructor(code: ParseErrorCode, message: string) {
     super(message);
     this.code = code;
     this.name = 'ParseError';

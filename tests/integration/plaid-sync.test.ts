@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
-import { createTestDb } from './setup';
+import { createTestDb, createTestUser } from './setup';
 import { syncAccountTransactions } from '@/lib/plaid/client';
 import { encrypt } from '@/lib/security/encryption';
 
@@ -19,6 +19,7 @@ describe('syncAccountTransactions (US5, T055 integration)', () => {
   let client: PrismaClient;
   let cleanup: () => void;
   let accountId: string;
+  let userId: string;
 
   const fixturePage = {
     enabled: true as const,
@@ -37,9 +38,11 @@ describe('syncAccountTransactions (US5, T055 integration)', () => {
     const db = await createTestDb();
     client = db.client;
     cleanup = db.cleanup;
+    userId = (await createTestUser(client)).id;
 
     const account = await client.account.create({
       data: {
+        userId,
         name: 'Sandbox Checking',
         type: 'PLAID',
         plaidItemId: 'item-sandbox-fake',
@@ -97,7 +100,7 @@ describe('syncAccountTransactions (US5, T055 integration)', () => {
 
   it('a non-Plaid account (no accessTokenEncrypted) is reported as not syncable, not an error', async () => {
     const manualAccount = await client.account.create({
-      data: { name: 'Manual Account', type: 'MANUAL' },
+      data: { name: 'Manual Account', type: 'MANUAL', userId },
     });
     const outcome = await syncAccountTransactions(manualAccount.id, client, async () => fixturePage);
     expect(outcome).toEqual({ success: false, reason: 'NOT_A_PLAID_ACCOUNT' });

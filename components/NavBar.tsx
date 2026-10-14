@@ -10,9 +10,10 @@ const LINKS = [
   { href: '/trends', label: 'Trends' },
   { href: '/recommendations', label: 'Recommendations' },
   { href: '/investments', label: 'Investments' },
+  { href: '/settings', label: 'Settings' },
 ];
 
-export function NavBar() {
+export function NavBar({ email, onSignOut }: { email: string; onSignOut: () => void }) {
   const pathname = usePathname();
 
   return (
@@ -54,6 +55,18 @@ export function NavBar() {
             );
           })}
         </nav>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="hidden max-w-[12rem] truncate text-slate-500 md:inline" title={email}>
+            {email}
+          </span>
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="rounded-lg px-3 py-1.5 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     </header>
   );

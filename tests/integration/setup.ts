@@ -31,3 +31,14 @@ export async function createTestDb(): Promise<{ client: PrismaClient; cleanup: (
 
   return { client, cleanup };
 }
+
+let userCounter = 0;
+
+/** Creates a throwaway user (accounts now require an owner). Skips password hashing cost. */
+export async function createTestUser(client: PrismaClient): Promise<{ id: string }> {
+  userCounter += 1;
+  const user = await client.user.create({
+    data: { email: `test-${userCounter}-${Date.now()}@example.com`, passwordHash: 'not-a-real-hash' },
+  });
+  return { id: user.id };
+}
