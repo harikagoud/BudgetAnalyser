@@ -103,6 +103,10 @@ Limits are removed with the account.
   for the months the import added transactions to (empty when no limit is
   near/over). Alerts are computed when data is loaded; nothing is pushed while
   the app is closed.
+- `PATCH /api/transactions/:id` `{ categoryId }` now also returns `alsoUpdated`: how
+  many of the caller's other (not manually set) transactions the newly learned
+  merchant rule moved. The learned rule key is the cleaned merchant name without
+  store numbers/city/state, so later imports of that merchant follow it.
 - `POST /api/transactions/recategorize` — re-runs the current rules over the
   caller's own transactions, skipping `USER_OVERRIDE` rows. **200**
   `{ scanned, changed }`. Idempotent.
@@ -413,3 +417,42 @@ an application bug.
 Error messages and all server logs for these routes MUST NOT include account
 numbers, access tokens, or unredacted raw merchant descriptions beyond what
 is already shown in the authenticated UI response (Constitution Principle VI).
+
+---
+
+## Linked accounts (Plaid) — added
+
+- `GET /api/accounts` no longer calls Plaid. Items now include `lastSyncedAt`
+  (ISO or `null`); the response includes `plaidEnv` (`sandbox`/`development`/
+  `production`, or `null` when disabled).
+- `POST /api/accounts/:id/sync` `{ force?: boolean }` — refresh one linked
+  account. **200** `{ throttled, transactionCount }` (`throttled: true` when it
+  was synced in the last 5 minutes and `force` is not set) · **404** not found /
+  not yours / not linked, or Plaid disabled · **502** `SYNC_FAILED` (existing
+  data untouched).
+- `POST /api/accounts/:id/disconnect` — revoke the bank connection at Plaid,
+  keep the imported transactions, turn the account into a normal imported
+  account. **200** `{ disconnected: true }` · **404** · **502** `REVOKE_FAILED`
+  (nothing changed; retry — also returned when Plaid is disabled on the server, so a
+  live connection is never orphaned).
+- `GET /api/cron/plaid-sync` — daily refresh of every linked account. Public to
+  the session middleware but requires `Authorization: Bearer $CRON_SECRET`
+  (**401** otherwise; fails closed when `CRON_SECRET` is unset or < 16 chars).
+  Scheduled by `vercel.json` (once a day — the Hobby plan limit).
+- Plaid rows are deduped by Plaid's `transaction_id`; pending rows are skipped
+  until they post. Deleting the user account also revokes their Plaid items.
+- `POST /api/plaid/link-token` sends `redirect_uri` when `PLAID_REDIRECT_URI` is
+  set (OAuth banks); the web page `/plaid-oauth` finishes that flow.
+
+---
+
+## Deleting uploads and accounts — added
+
+- `GET /api/imports` → `{ imports: [{ id, fileName, format, accountId, accountName, createdAt, transactionCount }] }`
+  (newest first; `transactionCount` is the live number of rows this upload added).
+- `DELETE /api/imports/:id` — removes the upload and the transactions it added (rows a later,
+  overlapping upload skipped as duplicates belong to the earlier upload and go with it).
+  **200** `{ deletedTransactions }` · **404** not found / not yours. Re-uploading the file restores the rows.
+- `DELETE /api/accounts/:id` — deletes an uploaded account with its transactions and uploads.
+  **200** `{ deletedTransactions }` · **404** · **409** `DISCONNECT_FIRST` for a linked (Plaid)
+  account (use `POST /api/accounts/:id/disconnect` first).

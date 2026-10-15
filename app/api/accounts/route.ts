@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/client';
-import { isPlaidEnabled, syncAccountTransactions } from '@/lib/plaid/client';
+import { isPlaidEnabled } from '@/lib/plaid/client';
 import { getUserId, unauthorized } from '@/lib/auth/request';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * Accounts list for the accounts page (also usable by the static mobile
- * build, which has no server components). When Plaid is enabled this also
- * re-syncs every linked account first (US5 Acceptance Scenario 2) — a sync
- * failure is logged inside syncAccountTransactions and never thrown, so the
- * list always returns whatever was last persisted.
+ * build, which has no server components). Listing never calls Plaid: linked
+ * accounts are refreshed by the daily cron and by POST /api/accounts/:id/sync.
  *
  * Only safe fields are selected: never accessTokenEncrypted.
  */
@@ -20,14 +18,6 @@ export async function GET(req: NextRequest) {
 
   const plaidEnabled = isPlaidEnabled();
 
-  if (plaidEnabled) {
-    const plaidAccounts = await prisma.account.findMany({
-      where: { type: 'PLAID', userId },
-      select: { id: true },
-    });
-    await Promise.all(plaidAccounts.map((a) => syncAccountTransactions(a.id)));
-  }
-
   const accounts = await prisma.account.findMany({
     where: { userId },
     orderBy: { createdAt: 'desc' },
@@ -36,17 +26,20 @@ export async function GET(req: NextRequest) {
       name: true,
       type: true,
       institutionName: true,
+      lastSyncedAt: true,
       _count: { select: { transactions: true } },
     },
   });
 
   return NextResponse.json({
     plaidEnabled,
+    plaidEnv: plaidEnabled ? (process.env.PLAID_ENV ?? 'sandbox') : null,
     accounts: accounts.map((a) => ({
       id: a.id,
       name: a.name,
       type: a.type,
       institutionName: a.institutionName,
+      lastSyncedAt: a.lastSyncedAt ? a.lastSyncedAt.toISOString() : null,
       transactionCount: a._count.transactions,
     })),
   });

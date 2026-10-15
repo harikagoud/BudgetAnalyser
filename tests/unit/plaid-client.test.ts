@@ -138,3 +138,43 @@ describe('applyPlaidTransactions — pure categorize/dedupe core (US5 Acceptance
     expect(result.categoryCounts).toEqual({ Dining: 2, Uncategorized: 1 });
   });
 });
+
+describe('Plaid rows with transaction ids', () => {
+  const categories = [{ id: 'cat_unc', name: 'Uncategorized' }];
+  const run = (txs: Parameters<typeof applyPlaidTransactions>[0], existing = new Set<string>()) =>
+    applyPlaidTransactions(txs, 'acct_1', [], categories, 'cat_unc', existing);
+
+  it('skips pending rows (the posted version arrives later under a new id)', () => {
+    const out = run([
+      { id: 'p1', date: '2026-10-01', amount: 20, merchantRaw: 'SHOP', pending: true },
+      { id: 'p2', date: '2026-10-02', amount: 20, merchantRaw: 'SHOP', pending: false },
+    ]);
+    expect(out.toCreate).toHaveLength(1);
+  });
+
+  it('keeps two identical same-day purchases because their ids differ', () => {
+    const out = run([
+      { id: 'a', date: '2026-10-01', amount: 65, merchantRaw: 'COSTCO' },
+      { id: 'b', date: '2026-10-01', amount: 65, merchantRaw: 'COSTCO' },
+    ]);
+    expect(out.toCreate).toHaveLength(2);
+  });
+
+  it('the same id on a later sync is a duplicate, even if the date or merchant text changed', () => {
+    const first = run([{ id: 'a', date: '2026-10-01', amount: 65, merchantRaw: 'COSTCO' }]);
+    const again = run(
+      [{ id: 'a', date: '2026-10-02', amount: 65, merchantRaw: 'COSTCO WHSE' }],
+      new Set(first.toCreate.map((r) => r.dedupeKey)),
+    );
+    expect(again.toCreate).toHaveLength(0);
+    expect(again.duplicateCount).toBe(1);
+  });
+
+  it('skips zero-amount rows and keeps different accounts apart', () => {
+    expect(run([{ id: 'z', date: '2026-10-01', amount: 0, merchantRaw: 'X' }]).toCreate).toHaveLength(0);
+    const a = applyPlaidTransactions([{ id: 'a', date: '2026-10-01', amount: 5, merchantRaw: 'X' }], 'acct_1', [], categories, 'cat_unc', new Set());
+    const b = applyPlaidTransactions([{ id: 'a', date: '2026-10-01', amount: 5, merchantRaw: 'X' }], 'acct_2', [], categories, 'cat_unc', new Set());
+    expect(a.toCreate[0].dedupeKey).not.toBe(b.toCreate[0].dedupeKey);
+  });
+});
+

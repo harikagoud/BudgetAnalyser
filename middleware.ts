@@ -26,6 +26,8 @@ const PUBLIC_PATHS = new Set([
   '/api/auth/verify-email',
   '/api/auth/resend-verification',
   '/api/health',
+  // Authenticated by CRON_SECRET inside the route (Vercel Cron has no user session).
+  '/api/cron/plaid-sync',
 ]);
 
 function setCors(res: NextResponse, origin: string) {

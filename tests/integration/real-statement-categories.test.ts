@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { createTestDb, createTestUser } from './setup';
 import { importStatement } from '@/lib/import/importStatement';
 import { computeMonthlySummaryFromDb } from '@/lib/aggregation/monthly-summary';
+import { applyUserCategoryChoice } from '@/lib/categorization/learn';
 import { recategorizeUserTransactions } from '@/lib/categorization/recategorize';
 
 const CSV = [
@@ -113,5 +114,55 @@ describe('real-statement categorization (integration)', () => {
 
     const second = await recategorizeUserTransactions(userId, client); // idempotent
     expect(second.changed).toBe(0);
+  });
+
+  it('learns from a manual choice: same merchant updates now and on the next import; others cannot touch it', async () => {
+    const acct = await client.account.create({ data: { name: 'Learn', type: 'MANUAL', userId } });
+    const csv = (rows: string[]) => ['Date,Description,Amount', ...rows].join('\n');
+    await importStatement(
+      {
+        userId,
+        accountId: acct.id,
+        fileName: 'l1.csv',
+        fileContent: csv([
+          '2026-11-01,SQ *JOES UNKNOWN STAND 0912,12.00',
+          '2026-11-02,JOES UNKNOWN STAND #55 PLANO TX,9.00',
+          '2026-11-02,NETFLIX.COM 866-579-7172 CA,15.49',
+        ]),
+        format: 'CSV',
+      },
+      client,
+    );
+    const groceries = await client.category.findUniqueOrThrow({ where: { name: 'Groceries' } });
+    const entertainment = await client.category.findUniqueOrThrow({ where: { name: 'Entertainment' } });
+    const first = await client.transaction.findFirstOrThrow({
+      where: { accountId: acct.id, merchantRaw: { contains: 'SQ *JOES' } },
+    });
+
+    const out = await applyUserCategoryChoice(userId, first.id, groceries.id, client);
+    expect(out.transaction?.categorySource).toBe('USER_OVERRIDE');
+    expect(out.alsoUpdated).toBe(1);
+    const second = await client.transaction.findFirstOrThrow({
+      where: { accountId: acct.id, merchantRaw: { contains: '#55' } },
+    });
+    expect(second.categoryId).toBe(groceries.id);
+
+    // Next month's statement, different store number: learned.
+    const next = await importStatement(
+      { userId, accountId: acct.id, fileName: 'l2.csv', fileContent: csv(['2026-12-01,JOES UNKNOWN STAND 7777,5.00']), format: 'CSV' },
+      client,
+    );
+    expect(next.categories['Groceries']).toBe(1);
+
+    // A manual choice on a built-in merchant beats the seed rule, and survives a recategorize.
+    const nf = await client.transaction.findFirstOrThrow({ where: { accountId: acct.id, merchantRaw: { contains: 'NETFLIX' } } });
+    await applyUserCategoryChoice(userId, nf.id, entertainment.id, client);
+    await recategorizeUserTransactions(userId, client);
+    expect((await client.transaction.findUniqueOrThrow({ where: { id: nf.id } })).categoryId).toBe(entertainment.id);
+
+    // Someone else's transaction: not found, nothing changes.
+    const intruder = await applyUserCategoryChoice(otherUserId, first.id, entertainment.id, client);
+    expect(intruder.transaction).toBeNull();
+    expect((await client.transaction.findUniqueOrThrow({ where: { id: first.id } })).categoryId).toBe(groceries.id);
   });
 });

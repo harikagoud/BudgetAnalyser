@@ -48,7 +48,7 @@ const BY_CATEGORY: Record<string, string[]> = {
     'claude ai', 'github', 'adobe', 'microsoft 365', 'office 365', 'dropbox', 'audible', 'kindle unlimited', 'hbo',
     'paramount', 'peacock', 'crunchyroll', 'patreon', 'nytimes', 'new york times', 'wall street journal', 'linkedin premium',
     'zoom', 'notion', 'canva', '1password', 'lastpass', 'nordvpn', 'expressvpn', 'duolingo', 'headspace', 'calm com',
-    'peloton', 'google one', 'google storage', 'sirius', 'siriusxm', 'playstation plus', 'xbox game pass', 'nintendo online',
+    'peloton', 'rebtel', 'google one', 'google storage', 'sirius', 'siriusxm', 'playstation plus', 'xbox game pass', 'nintendo online',
   ],
   Dining: [
     'doordash', 'uber eats', 'ubereats', 'grubhub', 'postmates', 'seamless', 'starbucks', 'dunkin', 'chipotle', 'mcdonald',
@@ -95,7 +95,7 @@ const BY_CATEGORY: Record<string, string[]> = {
   Utilities: [
     'electric', 'water utility', 'water dept', 'gas company', 'internet service', 'at t', 'att', 'verizon', 't mobile',
     'tmobile', 'sprint', 'comcast', 'xfinity', 'spectrum', 'cox comm', 'frontier comm', 'google fi', 'mint mobile',
-    'visible', 'cricket wireless', 'boost mobile', 'rebtel', 'energy', 'oncor', 'centerpoint', 'txu', 'reliant',
+    'visible', 'cricket wireless', 'boost mobile', 'energy', 'oncor', 'centerpoint', 'txu', 'reliant',
     'duke energy', 'pg e', 'con edison', 'national grid', 'waste management', 'republic services', 'utilities',
   ],
   'Car Insurance': [

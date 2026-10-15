@@ -1,6 +1,7 @@
 import { prisma as defaultPrisma } from '@/lib/db/client';
 import type { PrismaClient } from '@prisma/client';
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
+import { revokeAllPlaidItemsForUser } from '@/lib/plaid/accounts';
 
 export class InvalidPasswordError extends Error {
   constructor() {
@@ -48,6 +49,9 @@ export async function deleteAccount(
   { password }: { password: string },
 ): Promise<void> {
   await requireCurrentPassword(client, userId, password);
+  // Stop bank access at Plaid before the tokens disappear from our database. Best-effort:
+  // a Plaid outage must not stop someone deleting their data.
+  await revokeAllPlaidItemsForUser(userId, client);
   await client.$transaction([
     client.transaction.deleteMany({ where: { account: { userId } } }),
     client.importBatch.deleteMany({ where: { account: { userId } } }),

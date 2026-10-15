@@ -46,7 +46,7 @@ openssl rand -base64 32   # ENCRYPTION_KEY (keep a private copy; only matters if
    | `DIRECT_URL` | direct Neon string |
    | `AUTH_SECRET` | from step 2 |
    | `ENCRYPTION_KEY` | from step 2 |
-   | `ENABLE_PLAID` | `false` |
+   | `ENABLE_PLAID` | `false` (set up Plaid later: `docs/PLAID.md`) |
 5. Deploy, then check `https://<your-app>.vercel.app/api/health` → `{"status":"ok"}`
    (it queries the database, so `503` means the connection string is wrong).
 6. Register an account, upload `tests/fixtures/sample-statement.csv`, open the

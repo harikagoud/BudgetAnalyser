@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/client';
-import { exchangePublicToken, isPlaidEnabled, syncAccountTransactions } from '@/lib/plaid/client';
+import {
+  exchangePublicToken,
+  isPlaidEnabled,
+  removePlaidItem,
+  syncAccountTransactions,
+} from '@/lib/plaid/client';
 import { encrypt } from '@/lib/security/encryption';
 import { logger } from '@/lib/logger';
 import { getUserId, unauthorized } from '@/lib/auth/request';
@@ -26,6 +31,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: 'INVALID_BODY', message: 'Expected { publicToken, accountName }.' },
       { status: 400 },
+    );
+  }
+
+  // Fail before talking to Plaid if we could not store the token safely (bad/missing ENCRYPTION_KEY),
+  // so no bank connection is ever created that we cannot keep track of.
+  try {
+    encrypt('probe');
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, 'ENCRYPTION_KEY is not usable; refusing to link an account');
+    return NextResponse.json(
+      { error: 'INTERNAL_ERROR', message: 'Bank connections are not configured on this server.' },
+      { status: 500 },
     );
   }
 
@@ -75,6 +92,8 @@ export async function POST(req: NextRequest) {
       { status: 200 },
     );
   } catch (err) {
+    // Do not leave an orphaned connection at Plaid that no account of ours points to.
+    await removePlaidItem(exchanged.data.accessToken);
     // Covers encrypt() throwing (missing/malformed ENCRYPTION_KEY) and any
     // Account persistence failure — never leaks the token or raw error.
     logger.error({ err: (err as Error).message }, 'Unexpected error finishing Plaid exchange');

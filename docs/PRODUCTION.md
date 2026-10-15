@@ -66,11 +66,11 @@ forgets their password is locked out. Also consider revocable sessions
 (server-side) — today a stolen token is valid until it expires.
 
 ## 7. Plaid (optional) — YOU
-Only sandbox was exercised, and never against real credentials.
-1. Verify with `PLAID_ENV=sandbox` first (`user_good` / `pass_good`).
-2. Apply for Plaid production access (review required) before real banks.
-3. Replace sync-on-page-load with a webhook + a stored cursor (today every
-   visit re-fetches full history).
+See `docs/PLAID.md` for the full setup. Sandbox is the only mode exercised, and never
+against real credentials. Real banks need Plaid Production access (review required).
+Sync is now on-demand ("Sync now"), when the Accounts page opens, and a daily cron; there
+is still no stored cursor or webhook (every sync re-fetches the history and dedupes by
+Plaid transaction id).
 
 ## 8. Monitoring — YOU
 Error tracking (Sentry etc.), ship the pino JSON logs somewhere searchable,

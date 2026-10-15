@@ -8,7 +8,7 @@ import {
   normalizeMerchant,
   type MerchantRuleLike,
 } from '@/lib/categorization/engine';
-import { computeDedupeKey } from '@/lib/dedupe';
+import { computeDedupeKey, computePlaidDedupeKey } from '@/lib/dedupe';
 import { logger } from '@/lib/logger';
 
 /**
@@ -57,6 +57,9 @@ export async function createLinkToken(
       country_codes: [CountryCode.Us],
       user: { client_user_id: clientUserId },
       products: [Products.Transactions],
+      // Required for banks that use OAuth (Bank of America, Chase, …). Must also be listed in
+      // the Plaid dashboard (Developers → API → Allowed redirect URIs).
+      ...(process.env.PLAID_REDIRECT_URI ? { redirect_uri: process.env.PLAID_REDIRECT_URI } : {}),
     });
     return { enabled: true, data: { linkToken: res.data.link_token } };
   } catch (err) {
@@ -87,10 +90,33 @@ export async function exchangePublicToken(
   }
 }
 
+export type RemoveItemResult = 'removed' | 'gone' | 'failed' | 'disabled';
+
+/**
+ * Revokes our access to the bank connection at Plaid (stops it being billed/refreshed).
+ * 'gone' = Plaid says the item no longer exists, which is the outcome we wanted anyway.
+ */
+export async function removePlaidItem(accessToken: string): Promise<RemoveItemResult> {
+  if (!isPlaidEnabled()) return 'disabled';
+  try {
+    await buildClient().itemRemove({ access_token: accessToken });
+    return 'removed';
+  } catch (err) {
+    const code = (err as { response?: { data?: { error_code?: string } } }).response?.data?.error_code;
+    if (code === 'ITEM_NOT_FOUND' || code === 'INVALID_ACCESS_TOKEN') return 'gone';
+    logger.error({ err: (err as Error).message }, 'Plaid item removal failed');
+    return 'failed';
+  }
+}
+
 export interface PlaidTxLike {
   date: string; // YYYY-MM-DD
   amount: number;
   merchantRaw: string;
+  /** Plaid transaction_id. When present it is the dedupe identity. */
+  id?: string;
+  /** Pending rows are skipped: the posted version arrives later with a new id and date. */
+  pending?: boolean;
 }
 
 /**
@@ -120,6 +146,8 @@ export async function fetchAllTransactions(
           date: t.date,
           amount: t.amount,
           merchantRaw: t.merchant_name ?? t.name,
+          id: t.transaction_id,
+          pending: t.pending,
         });
       }
       cursor = res.data.next_cursor;
@@ -169,12 +197,10 @@ export function applyPlaidTransactions(
   const categoryCounts: Record<string, number> = {};
 
   for (const tx of plaidTxs) {
-    const dedupeKey = computeDedupeKey({
-      date: tx.date,
-      amount: tx.amount,
-      accountId,
-      merchantRaw: tx.merchantRaw,
-    });
+    if (tx.pending || tx.amount === 0) continue;
+    const dedupeKey = tx.id
+      ? computePlaidDedupeKey(accountId, tx.id)
+      : computeDedupeKey({ date: tx.date, amount: tx.amount, accountId, merchantRaw: tx.merchantRaw });
     if (existingKeys.has(dedupeKey) || seenInBatch.has(dedupeKey)) {
       duplicateCount += 1;
       continue;
@@ -275,6 +301,8 @@ export async function syncAccountTransactions(
       if (toCreate.length > 0) {
         await tx.transaction.createMany({
           data: toCreate.map((row) => ({ ...row, accountId })),
+          // A cron run and "Sync now" can overlap; the unique dedupeKey makes the loser a no-op.
+          skipDuplicates: true,
         });
       }
       await tx.account.update({ where: { id: accountId }, data: { lastSyncedAt: new Date() } });

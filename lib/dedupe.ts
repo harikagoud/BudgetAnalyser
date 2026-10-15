@@ -18,3 +18,11 @@ export function computeDedupeKey(params: {
   const raw = `${params.date}|${params.amount.toFixed(2)}|${params.accountId}|${merchantNormalized}`;
   return crypto.createHash('sha256').update(raw).digest('hex');
 }
+
+/**
+ * Plaid rows are keyed by Plaid's own transaction id (stable and unique), so two identical
+ * same-day purchases are both kept and a pending→posted change cannot create a duplicate.
+ */
+export function computePlaidDedupeKey(accountId: string, plaidTransactionId: string): string {
+  return crypto.createHash('sha256').update(`plaid|${accountId}|${plaidTransactionId}`).digest('hex');
+}

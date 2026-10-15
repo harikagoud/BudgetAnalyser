@@ -37,7 +37,7 @@ describe('seed rules on real bank-statement descriptions', () => {
     ['OPENAI *CHATGPT SUBSCR SAN FRANCISCO CA', 'Subscriptions'],
     ['AAA TX INS 800-222-4357 TX', 'Car Insurance'],
     ["CARTER'S #1234 PLANO TX", 'Shopping'],
-    ['REBTEL.COM STOCKHOLM', 'Utilities'],
+    ['REBTEL.COM STOCKHOLM', 'Subscriptions'],
     ['PAYMENT FROM CHK 1234', 'Payments/Transfers'],
     ['INTEREST CHARGED ON PURCHASES', 'Fees & Interest'],
     ['INTEREST CHARGED ON CASH ADVANCES', 'Fees & Interest'],
