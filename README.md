@@ -40,7 +40,8 @@ ever sees its own data. (The app was originally single-user; see
 |------|--------------|
 | `/accounts` | Upload a CSV/OFX statement; list accounts |
 | `/` | Categorized monthly dashboard |
-| `/trends` | Month-over-month comparison, flagged increases |
+| `/trends` | Month-over-month comparison, flagged increases, and a multi-month comparison showing where spending is above each category's average |
+| `/budgets` | Monthly limit per category (e.g. Groceries, Dining) with warnings at 80% and alerts when reached; a bell in the nav bar shows the count |
 | `/recommendations` | Cuts for overspent discretionary categories + projected annual savings |
 | `/investments` | Educational allocation of projected savings by risk tolerance |
 

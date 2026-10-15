@@ -35,6 +35,7 @@ model User {
   accounts      Account[]
   settings      UserSetting[]
   merchantRules MerchantRule[]
+  budgetLimits  BudgetLimit[]
 }
 
 /// How transactions enter the system for a given Account.
@@ -87,6 +88,7 @@ model Category {
 
   transactions  Transaction[]
   merchantRules MerchantRule[]
+  budgetLimits  BudgetLimit[]
 }
 
 /// Source of a merchant->category mapping.
@@ -131,4 +133,18 @@ model ImportBatch {
   createdAt        DateTime @default(now())
 
   transactions Transaction[]
+}
+
+/// A user's monthly spending limit for one category (applies to every month).
+/// Removed with the user (cascade); Categories are global and never deleted.
+model BudgetLimit {
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+  amount     Float // dollars per month, > 0, stored to the cent
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@id([userId, categoryId])
 }

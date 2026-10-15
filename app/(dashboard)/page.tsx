@@ -11,6 +11,8 @@ import { Select } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
 import { formatCurrency } from '@/lib/utils';
 import { apiFetch } from '@/lib/api-base';
+import { BudgetAlerts } from '@/components/budget/BudgetAlerts';
+import type { BudgetStatus } from '@/lib/budget/types';
 
 /** "2026-09" -> "September 2026" */
 function formatMonth(yearMonth: string): string {
@@ -51,6 +53,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   // null = "follow the latest month"; otherwise the user's explicit pick.
   const [pickedMonth, setPickedMonth] = useState<string | null>(null);
+  const [alerts, setAlerts] = useState<BudgetStatus[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,6 +73,19 @@ export default function DashboardPage() {
   const latestMonth = summary?.months[summary.months.length - 1];
   const selectedMonth =
     pickedMonth && summary?.months.includes(pickedMonth) ? pickedMonth : latestMonth;
+
+  // Budget alerts for the same month as every other number on the page.
+  useEffect(() => {
+    if (!selectedMonth) return;
+    let cancelled = false;
+    apiFetch(`/api/budgets?month=${selectedMonth}`)
+      .then((res) => (res.ok ? res.json() : { alerts: [] }))
+      .then((data: { alerts: BudgetStatus[] }) => !cancelled && setAlerts(data.alerts))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMonth, summary]);
 
   // Uncategorized rows are scoped to the selected month, matching every other
   // number on the page.
@@ -160,6 +176,8 @@ export default function DashboardPage() {
           </div>
         }
       />
+
+      <BudgetAlerts month={month} alerts={alerts} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard

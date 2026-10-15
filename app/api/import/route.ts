@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger';
 import { getUserId, unauthorized } from '@/lib/auth/request';
 import { getOwnedAccount } from '@/lib/accounts';
 import { MAX_UPLOAD_BYTES } from '@/lib/import/limits';
+import { alertsForImportBatch } from '@/lib/budget/service';
 import { BINARY_FORMATS, detectFormat, FORMAT_LABEL } from '@/lib/import/formats';
 
 export async function POST(req: NextRequest) {
@@ -96,7 +97,14 @@ export async function POST(req: NextRequest) {
       format,
     });
 
-    return NextResponse.json(result, { status: 200 });
+    // Tell the user right away if this import pushed a category to/over its limit.
+    // Best-effort: an alert failure must never fail an import that already succeeded.
+    const budgetAlerts = await alertsForImportBatch(undefined, userId, result.importBatchId).catch((err) => {
+      logger.error({ err: (err as Error).message }, 'Could not compute budget alerts after import');
+      return [];
+    });
+
+    return NextResponse.json({ ...result, budgetAlerts }, { status: 200 });
   } catch (err) {
     if (createdAccountId) {
       // importStatement is atomic, so a new account here has no transactions.

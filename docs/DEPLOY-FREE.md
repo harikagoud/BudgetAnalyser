@@ -78,6 +78,20 @@ New accounts must click an emailed link before they can sign in.
    land in spam on the first send. For wider use, move to a domain-based sender
    (Resend/Postmark) — only `SMTP_*`/`EMAIL_FROM` change.
 
+## 5. Budget limits (new table)
+Run **Part 4** of `prisma/neon-setup.sql` (the `CREATE TABLE "BudgetLimit"` block) in
+Neon's SQL Editor **before** the code that uses it deploys, or the Budgets pages and
+the nav-bar bell return errors.
+
+Later, from a network that can reach Neon on port 5432, tell Prisma those changes
+are already applied (one command per migration), so future `migrate deploy` runs
+don't try to re-create them:
+```bash
+DATABASE_URL="$D" DIRECT_URL="$D" npx prisma migrate resolve --applied 20261014120000_init_postgres
+DATABASE_URL="$D" DIRECT_URL="$D" npx prisma migrate resolve --applied 20261014180000_add_email_verification
+DATABASE_URL="$D" DIRECT_URL="$D" npx prisma migrate resolve --applied 20261015120000_add_budget_limits
+```
+
 ## Known limits of this setup
 - **Login/registration throttles are per serverless instance**, so on Vercel they
   only slow an attacker down. Fine for friends-and-family; add a shared store

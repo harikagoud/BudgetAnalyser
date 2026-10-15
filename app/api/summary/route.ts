@@ -8,12 +8,14 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const monthsParam = searchParams.get('months');
-  const months = monthsParam ? Number(monthsParam) : 6;
+  const parsedMonths = monthsParam ? Number(monthsParam) : 6;
+  // Clamp: NaN / negative / huge values must not reach the query.
+  const months = Number.isFinite(parsedMonths) ? Math.min(Math.max(Math.trunc(parsedMonths), 1), 120) : 6;
 
   const summaries = await computeMonthlySummaryFromDb({ userId, months });
 
   if (summaries.length === 0) {
-    return NextResponse.json({ months: [], categories: [], insufficientHistory: true });
+    return NextResponse.json({ months: [], partialMonths: [], categories: [], insufficientHistory: true });
   }
 
   const monthKeys = summaries.map((s) => s.yearMonth);
@@ -66,6 +68,8 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     months: monthKeys,
+    // Months whose data starts mid-month; comparisons against them are not like-for-like.
+    partialMonths: summaries.filter((s) => s.isPartialMonth).map((s) => s.yearMonth),
     categories,
     insufficientHistory,
   });

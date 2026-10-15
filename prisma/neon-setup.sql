@@ -184,3 +184,20 @@ INSERT INTO "MerchantRule" ("id","pattern","categoryId","source","userId") VALUE
 -- If you already ran Parts 1-2 earlier, run ONLY these two statements.
 ALTER TABLE "User" ADD COLUMN "emailVerifiedAt" TIMESTAMP(3);
 UPDATE "User" SET "emailVerifiedAt" = "createdAt";
+
+-- ===== Part 4: budget limits (migration 20261015120000_add_budget_limits) =====
+-- If Parts 1-3 are already applied, run ONLY this part.
+CREATE TABLE "BudgetLimit" (
+    "userId" TEXT NOT NULL,
+    "categoryId" TEXT NOT NULL,
+    "amount" DOUBLE PRECISION NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "BudgetLimit_pkey" PRIMARY KEY ("userId","categoryId")
+);
+
+ALTER TABLE "BudgetLimit" ADD CONSTRAINT "BudgetLimit_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "BudgetLimit" ADD CONSTRAINT "BudgetLimit_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "Category"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+

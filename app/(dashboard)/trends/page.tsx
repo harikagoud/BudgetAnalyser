@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/select';
 import { TrendLineChart } from '@/components/charts/TrendLineChart';
 import { formatCurrency } from '@/lib/utils';
 import { apiFetch } from '@/lib/api-base';
+import { CompareMonths } from '@/components/budget/CompareMonths';
 
 interface SummaryCategory {
   categoryId: string;
@@ -22,6 +23,7 @@ interface SummaryCategory {
 
 interface SummaryResponse {
   months: string[];
+  partialMonths?: string[];
   categories: SummaryCategory[];
   insufficientHistory: boolean;
 }
@@ -30,12 +32,18 @@ export default function TrendsPage() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [limits, setLimits] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    apiFetch('/api/summary?months=6')
-      .then((res) => res.json())
-      .then((data: SummaryResponse) => {
+    // 24 months so the comparison can reach further back than the 6-month chart.
+    Promise.all([apiFetch('/api/summary?months=24'), apiFetch('/api/budgets')])
+      .then(async ([summaryRes, budgetRes]) => {
+        const data: SummaryResponse = await summaryRes.json();
+        const budget: { limits?: { categoryId: string; amount: number }[] } = budgetRes.ok
+          ? await budgetRes.json()
+          : {};
         setSummary(data);
+        setLimits(Object.fromEntries((budget.limits ?? []).map((l) => [l.categoryId, l.amount])));
         if (data.categories.length > 0) {
           setSelectedCategoryId(data.categories[0].categoryId);
         }
@@ -50,7 +58,7 @@ export default function TrendsPage() {
 
   const chartData = useMemo(() => {
     if (!summary || !selectedCategory) return [];
-    return summary.months.map((month) => ({
+    return summary.months.slice(-6).map((month) => ({
       month,
       total: selectedCategory.byMonth[month] ?? 0,
     }));
@@ -129,6 +137,13 @@ export default function TrendsPage() {
           </Card>
         </>
       )}
+
+      <CompareMonths
+        months={summary.months}
+        partialMonths={summary.partialMonths ?? []}
+        categories={summary.categories}
+        limits={limits}
+      />
     </div>
   );
 }

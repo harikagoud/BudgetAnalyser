@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiFetch } from '@/lib/api-base';
 import { ACCEPT_ATTRIBUTE, FORMAT_LABEL } from '@/lib/import/formats';
+import { BudgetAlerts } from '@/components/budget/BudgetAlerts';
+import type { BudgetStatus } from '@/lib/budget/types';
 
 interface ImportResult {
   importBatchId: string;
@@ -14,6 +16,7 @@ interface ImportResult {
   errorCount: number;
   categories: Record<string, number>;
   notes?: string[];
+  budgetAlerts?: { month: string; alerts: BudgetStatus[] }[];
 }
 
 export function UploadForm({ onImported }: { onImported?: () => void }) {
@@ -93,6 +96,10 @@ export function UploadForm({ onImported }: { onImported?: () => void }) {
           </Button>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
+
+          {result && status === 'done' && result.budgetAlerts?.map((b) => (
+            <BudgetAlerts key={b.month} month={b.month} alerts={b.alerts} />
+          ))}
 
           {result && status === 'done' && (
             <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800 ring-1 ring-inset ring-emerald-200">

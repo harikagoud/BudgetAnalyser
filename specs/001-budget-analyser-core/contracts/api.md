@@ -86,6 +86,26 @@ user and all their accounts, transactions, import batches, settings and USER
 rules in one DB transaction. **403** `INVALID_PASSWORD` deletes nothing.
 Required for Google Play's account-deletion policy.
 
+### Budgets *(session required)*
+One monthly limit per category per user (the same amount applies to every month).
+Limits are removed with the account.
+
+- `GET /api/budgets?month=YYYY-MM` → `{ categories: [{categoryId,name}], month, limits: [{categoryId,name,amount}], statuses: [{categoryId,name,limit,spent,remaining,percent,level}], alerts }`.
+  `month` defaults to the **latest month that has data** (statements are often
+  imported after the fact). `spent` uses the dashboard's net-of-refunds totals.
+  `level`: `ok` below 80 %, `warning` from 80 %, `over` once spent **reaches**
+  the limit (compared in whole cents). `alerts` = the non-`ok` statuses, worst
+  first. **400** `INVALID_MONTH`.
+- `PUT /api/budgets` `{ categoryId, amount }` — amount > 0, ≤ 1,000,000, at most
+  2 decimals. **200** `{ limits }` · **400** `INVALID_BODY` / `UNKNOWN_CATEGORY`.
+- `DELETE /api/budgets?categoryId=…` — idempotent. **200** `{ limits }`.
+- `POST /api/import` responses also carry `budgetAlerts: [{ month, alerts }]`
+  for the months the import added transactions to (empty when no limit is
+  near/over). Alerts are computed when data is loaded; nothing is pushed while
+  the app is closed.
+- `GET /api/summary` now also returns `partialMonths` (months whose data starts
+  mid-month) and clamps `months` to 1–120.
+
 ### GET /api/health *(public)*
 **200** `{ "status": "ok" }` when the database answers, else **503**
 `{ "status": "unavailable" }`. For load balancers / uptime checks.
