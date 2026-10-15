@@ -52,6 +52,32 @@ openssl rand -base64 32   # ENCRYPTION_KEY (keep a private copy; only matters if
 6. Register an account, upload `tests/fixtures/sample-statement.csv`, open the
    dashboard, then try Settings → delete account.
 
+## 4. Email verification (Gmail SMTP)
+New accounts must click an emailed link before they can sign in.
+1. Use a **personal** Google account (Workspace/company accounts often block this).
+   Turn on 2-Step Verification, then create an **App Password**
+   (myaccount.google.com/apppasswords). Copy the 16-character value.
+2. Add these Vercel environment variables (Production), then redeploy:
+
+   | Name | Value |
+   |---|---|
+   | `SMTP_HOST` | `smtp.gmail.com` |
+   | `SMTP_PORT` | `465` |
+   | `SMTP_USER` | your Gmail address |
+   | `SMTP_PASS` | the App Password (not your Google password) |
+   | `EMAIL_FROM` | `Budget Analyser <your Gmail address>` |
+   | `APP_URL` | your site, e.g. `https://budget-analyser-xxxx.vercel.app` (no trailing slash) |
+
+3. **Before the code deploys**, add the new column to Neon (SQL Editor, run once). If
+   the code reaches production first, register/login return 500:
+   ```sql
+   ALTER TABLE "User" ADD COLUMN "emailVerifiedAt" TIMESTAMP(3);
+   UPDATE "User" SET "emailVerifiedAt" = "createdAt";  -- existing test accounts count as verified
+   ```
+4. Gmail allows roughly 500 messages a day, which is plenty for testing. Mail can
+   land in spam on the first send. For wider use, move to a domain-based sender
+   (Resend/Postmark) — only `SMTP_*`/`EMAIL_FROM` change.
+
 ## Known limits of this setup
 - **Login/registration throttles are per serverless instance**, so on Vercel they
   only slow an attacker down. Fine for friends-and-family; add a shared store

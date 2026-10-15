@@ -1,8 +1,9 @@
 import { prisma as defaultPrisma } from '@/lib/db/client';
 import type { PrismaClient } from '@prisma/client';
-import { parseCsv, ParseError } from '@/lib/parsers/csv';
+import { ParseError } from '@/lib/parsers/csv';
 import { MAX_IMPORT_ROWS } from '@/lib/import/limits';
-import { parseOfx } from '@/lib/parsers/ofx';
+import type { ImportFormat } from '@/lib/import/formats';
+import { parseStatementFile } from '@/lib/parsers';
 import {
   categorizeFromRules,
   loadRulesForUser,
@@ -17,16 +18,22 @@ export interface ImportParams {
   userId: string;
   accountId: string;
   fileName: string;
-  fileContent: string;
-  format: 'CSV' | 'OFX';
+  /** Decoded text (text formats). Alternatively pass `fileBytes`. */
+  fileContent?: string;
+  /** Raw file bytes; required for XLSX and PDF. */
+  fileBytes?: Uint8Array;
+  format: ImportFormat;
 }
 
 export interface ImportResult {
   importBatchId: string;
   transactionCount: number;
   duplicateCount: number;
+  /** Lines that looked like transactions but could not be read (PDF only). */
   errorCount: number;
   categories: Record<string, number>;
+  /** How the file was interpreted, e.g. an automatic sign flip or a best-effort warning. */
+  notes: string[];
 }
 
 /**
@@ -38,8 +45,11 @@ export async function importStatement(
   params: ImportParams,
   client: PrismaClient = defaultPrisma,
 ): Promise<ImportResult> {
-  const rows =
-    params.format === 'CSV' ? parseCsv(params.fileContent) : parseOfx(params.fileContent);
+  const { rows, notes, skipped } = await parseStatementFile({
+    format: params.format,
+    text: params.fileContent,
+    bytes: params.fileBytes,
+  });
 
   if (rows.length > MAX_IMPORT_ROWS) {
     throw new ParseError(
@@ -121,7 +131,7 @@ export async function importStatement(
         format: params.format,
         transactionCount: toCreate.length,
         duplicateCount,
-        errorCount: 0,
+        errorCount: skipped,
       },
     });
     if (toCreate.length > 0) {
@@ -151,7 +161,8 @@ export async function importStatement(
     importBatchId: batch.id,
     transactionCount: toCreate.length,
     duplicateCount,
-    errorCount: 0,
+    errorCount: skipped,
     categories: categoryCounts,
+    notes,
   };
 }

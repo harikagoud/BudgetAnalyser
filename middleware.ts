@@ -23,6 +23,8 @@ const PUBLIC_PATHS = new Set([
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/logout',
+  '/api/auth/verify-email',
+  '/api/auth/resend-verification',
   '/api/health',
 ]);
 

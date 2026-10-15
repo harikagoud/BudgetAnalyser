@@ -22,3 +22,12 @@ export const ChangePasswordSchema = z.object({
 export const DeleteAccountSchema = z.object({
   password: z.string().min(1).max(PASSWORD_MAX),
 });
+
+export const EmailOnlySchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+});
+
+export const VerifyEmailSchema = z.object({
+  token: z.string().min(1).max(2048),
+  password: z.string().min(1).max(PASSWORD_MAX),
+});

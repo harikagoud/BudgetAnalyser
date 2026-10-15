@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { registerUser, EmailTakenError } from '@/lib/auth/service';
-import { signToken } from '@/lib/auth/token';
-import { sessionCookie } from '@/lib/auth/request';
+import { sendVerificationEmail } from '@/lib/auth/verification';
 import { validateCredentials } from '@/lib/validation/auth';
 import { createThrottle } from '@/lib/auth/throttle';
 import { logger } from '@/lib/logger';
@@ -34,10 +33,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const user = await registerUser(undefined, parsed.data);
-    const token = await signToken(user.id);
-    const res = NextResponse.json({ user, token }, { status: 201 });
-    res.headers.append('Set-Cookie', sessionCookie(token, req.nextUrl.protocol === 'https:'));
-    return res;
+    // No session yet: the account only works after the emailed link is clicked.
+    // Awaited (not fire-and-forget) because serverless freezes after the response.
+    let emailSent = true;
+    try {
+      await sendVerificationEmail(user);
+    } catch (err) {
+      emailSent = false; // the account exists; the user can request a resend
+      logger.error({ err: (err as Error).message }, 'Could not send verification email');
+    }
+    return NextResponse.json({ pendingVerification: true, email: user.email, emailSent }, { status: 201 });
   } catch (err) {
     if (err instanceof EmailTakenError) {
       return NextResponse.json(

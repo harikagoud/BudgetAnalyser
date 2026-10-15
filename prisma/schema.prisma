@@ -26,10 +26,11 @@ datasource db {
 /// ImportBatch) hangs off exactly one User; USER merchant rules and
 /// UserSettings are per-user too. SEED rules/Categories stay global.
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique // stored lowercased
-  passwordHash String // scrypt$N$r$p$salt$hash — never plaintext, never logged
-  createdAt    DateTime @default(now())
+  id              String    @id @default(cuid())
+  email           String    @unique // stored lowercased
+  passwordHash    String // scrypt$N$r$p$salt$hash — never plaintext, never logged
+  emailVerifiedAt DateTime? // null until the emailed link is clicked; login is refused while null
+  createdAt       DateTime  @default(now())
 
   accounts      Account[]
   settings      UserSetting[]
@@ -39,18 +40,18 @@ model User {
 /// How transactions enter the system for a given Account.
 /// Allowed values: "MANUAL" | "PLAID"
 model Account {
-  id                    String   @id @default(cuid())
-  userId                String
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name                  String
-  type                  String // MANUAL | PLAID
-  plaidItemId           String?
-  accessTokenEncrypted  String? // AES-256-GCM ciphertext; never plaintext, never logged
-  institutionName       String?
-  createdAt             DateTime @default(now())
-  lastSyncedAt          DateTime?
+  id                   String    @id @default(cuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                 String
+  type                 String // MANUAL | PLAID
+  plaidItemId          String?
+  accessTokenEncrypted String? // AES-256-GCM ciphertext; never plaintext, never logged
+  institutionName      String?
+  createdAt            DateTime  @default(now())
+  lastSyncedAt         DateTime?
 
-  transactions Transaction[]
+  transactions  Transaction[]
   importBatches ImportBatch[]
 
   @@index([userId])
@@ -59,20 +60,20 @@ model Account {
 /// How a transaction's category was assigned.
 /// Allowed values: "RULE" | "USER_OVERRIDE" | "DEFAULT"
 model Transaction {
-  id                  String   @id @default(cuid())
-  accountId           String
-  account             Account  @relation(fields: [accountId], references: [id])
-  date                DateTime
-  amount              Float // positive = expense, negative = refund/credit
-  merchantRaw         String
-  merchantNormalized  String
-  categoryId          String
-  category            Category @relation(fields: [categoryId], references: [id])
-  categorySource      String // RULE | USER_OVERRIDE | DEFAULT
-  dedupeKey           String   @unique
-  importBatchId       String?
-  importBatch         ImportBatch? @relation(fields: [importBatchId], references: [id])
-  createdAt           DateTime @default(now())
+  id                 String       @id @default(cuid())
+  accountId          String
+  account            Account      @relation(fields: [accountId], references: [id])
+  date               DateTime
+  amount             Float // positive = expense, negative = refund/credit
+  merchantRaw        String
+  merchantNormalized String
+  categoryId         String
+  category           Category     @relation(fields: [categoryId], references: [id])
+  categorySource     String // RULE | USER_OVERRIDE | DEFAULT
+  dedupeKey          String       @unique
+  importBatchId      String?
+  importBatch        ImportBatch? @relation(fields: [importBatchId], references: [id])
+  createdAt          DateTime     @default(now())
 
   @@index([accountId, date])
   @@index([categoryId])
@@ -84,7 +85,7 @@ model Category {
   isDiscretionary Boolean
   isDefault       Boolean @default(false)
 
-  transactions Transaction[]
+  transactions  Transaction[]
   merchantRules MerchantRule[]
 }
 
@@ -119,15 +120,15 @@ model UserSetting {
 /// Statement file format for a given ImportBatch.
 /// Allowed values: "CSV" | "OFX"
 model ImportBatch {
-  id                String   @id @default(cuid())
-  accountId         String
-  account           Account  @relation(fields: [accountId], references: [id])
-  fileName          String
-  format            String // CSV | OFX
-  transactionCount  Int
-  duplicateCount    Int
-  errorCount        Int
-  createdAt         DateTime @default(now())
+  id               String   @id @default(cuid())
+  accountId        String
+  account          Account  @relation(fields: [accountId], references: [id])
+  fileName         String
+  format           String // CSV | OFX
+  transactionCount Int
+  duplicateCount   Int
+  errorCount       Int
+  createdAt        DateTime @default(now())
 
   transactions Transaction[]
 }

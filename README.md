@@ -32,7 +32,7 @@ throwaway schema per run.
 
 ## Using it
 
-Create an account at `/register`, then sign in at `/login`. Each account only
+Create an account at `/register`, click the emailed verification link, then sign in at `/login`. (With no `SMTP_*` set locally, the link is printed in the server log instead.) Each account only
 ever sees its own data. (The app was originally single-user; see
 `contracts/api.md` → Authentication.)
 

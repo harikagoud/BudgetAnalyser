@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { signToken, verifyToken } from '@/lib/auth/token';
+import { signPurposeToken, signToken, verifyPurposeToken, verifyToken } from '@/lib/auth/token';
 
 const SECRET_A = Buffer.alloc(32, 1).toString('base64');
 const SECRET_B = Buffer.alloc(32, 2).toString('base64');
@@ -49,5 +49,40 @@ describe('signed session token', () => {
     await expect(signToken('u')).rejects.toThrow(/AUTH_SECRET/);
     process.env.AUTH_SECRET = Buffer.alloc(8, 1).toString('base64');
     await expect(signToken('u')).rejects.toThrow(/AUTH_SECRET/);
+  });
+});
+
+describe('purpose-bound tokens (email links)', () => {
+  const original = process.env.AUTH_SECRET;
+  beforeEach(() => {
+    process.env.AUTH_SECRET = SECRET_A;
+  });
+  afterEach(() => {
+    process.env.AUTH_SECRET = original;
+  });
+
+  it('round-trips for the same purpose', async () => {
+    const token = await signPurposeToken('verify-email', 'user_1', 60_000);
+    expect(await verifyPurposeToken('verify-email', token)).toEqual({ userId: 'user_1' });
+  });
+
+  it('an email-link token can NOT be used as a session token', async () => {
+    const token = await signPurposeToken('verify-email', 'user_1', 60_000);
+    expect(await verifyToken(token)).toBeNull();
+  });
+
+  it('a session token can NOT be used as an email-link token', async () => {
+    const token = await signToken('user_1');
+    expect(await verifyPurposeToken('verify-email', token)).toBeNull();
+  });
+
+  it('a token for one purpose is rejected for another', async () => {
+    const token = await signPurposeToken('verify-email', 'user_1', 60_000);
+    expect(await verifyPurposeToken('reset-password', token)).toBeNull();
+  });
+
+  it('rejects an expired purpose token', async () => {
+    const token = await signPurposeToken('verify-email', 'user_1', -1000);
+    expect(await verifyPurposeToken('verify-email', token)).toBeNull();
   });
 });

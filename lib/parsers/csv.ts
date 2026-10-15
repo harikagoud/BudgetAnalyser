@@ -1,94 +1,57 @@
 import { parse } from 'csv-parse/sync';
+import { mapTable } from './tabular';
+import { ParseError, type ParseOutput, type ParsedRow } from './types';
 
-export interface ParsedRow {
-  date: string; // YYYY-MM-DD
-  merchantRaw: string;
-  amount: number;
-}
+export { ParseError };
+export type { ParsedRow, ParseErrorCode } from './types';
 
-export type ParseErrorCode = 'EMPTY_FILE' | 'PARSE_ERROR' | 'TOO_MANY_ROWS' | 'FILE_TOO_LARGE';
+const DELIMITERS = [',', ';', '\t', '|'];
 
-export class ParseError extends Error {
-  code: ParseErrorCode;
-  constructor(code: ParseErrorCode, message: string) {
-    super(message);
-    this.code = code;
-    this.name = 'ParseError';
+/** Picks the delimiter that appears most consistently in the first lines. */
+function sniffDelimiter(text: string): string {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== '').slice(0, 15);
+  let best = ',';
+  let bestScore = -1;
+  for (const d of DELIMITERS) {
+    const counts = lines.map((l) => l.split(d).length - 1);
+    const min = Math.min(...counts);
+    const total = counts.reduce((a, b) => a + b, 0);
+    const score = min > 0 ? total + 1000 : total; // present on every line beats merely frequent
+    if (score > bestScore) {
+      bestScore = score;
+      best = d;
+    }
   }
-}
-
-const DATE_KEYS = ['date', 'transaction date', 'posted date'];
-const DESCRIPTION_KEYS = ['description', 'merchant', 'payee', 'details'];
-const AMOUNT_KEYS = ['amount', 'debit', 'transaction amount'];
-
-function findKey(row: Record<string, string>, candidates: string[]): string | undefined {
-  const keys = Object.keys(row);
-  for (const candidate of candidates) {
-    const match = keys.find((k) => k.trim().toLowerCase() === candidate);
-    if (match) return match;
-  }
-  return undefined;
+  return best;
 }
 
 /**
- * Parses a CSV bank/card statement into a normalized row shape. Accepts
- * common header variants (Date/Transaction Date, Description/Merchant,
- * Amount/Debit). Throws a typed ParseError on empty input or rows missing
- * required fields, per contracts/api.md's EMPTY_FILE/PARSE_ERROR codes.
+ * Delimited text (CSV, TSV, semicolon/pipe-separated, .txt exports) into
+ * transactions. Header names are matched flexibly (see tabular.ts), account
+ * info above the header and Debit/Credit column pairs are handled.
  */
-export function parseCsv(fileContent: string): ParsedRow[] {
-  const trimmed = fileContent.trim();
+export function parseDelimited(fileContent: string): ParseOutput {
+  const trimmed = fileContent.replace(/^﻿/, '').trim();
   if (trimmed.length === 0) {
-    throw new ParseError('EMPTY_FILE', 'The uploaded CSV file is empty.');
+    throw new ParseError('EMPTY_FILE', 'The uploaded file is empty.');
   }
 
-  let records: Record<string, string>[];
+  let table: string[][];
   try {
-    records = parse(trimmed, {
-      columns: true,
+    table = parse(trimmed, {
+      delimiter: sniffDelimiter(trimmed),
       skip_empty_lines: true,
       trim: true,
+      relax_column_count: true,
+      relax_quotes: true,
     });
   } catch (err) {
-    throw new ParseError('PARSE_ERROR', `Could not parse CSV: ${(err as Error).message}`);
+    throw new ParseError('PARSE_ERROR', `Could not parse the file: ${(err as Error).message}`);
   }
-
-  if (records.length === 0) {
-    throw new ParseError('EMPTY_FILE', 'The uploaded CSV file has no data rows.');
-  }
-
-  const dateKey = findKey(records[0], DATE_KEYS);
-  const descriptionKey = findKey(records[0], DESCRIPTION_KEYS);
-  const amountKey = findKey(records[0], AMOUNT_KEYS);
-
-  if (!dateKey || !descriptionKey || !amountKey) {
-    throw new ParseError(
-      'PARSE_ERROR',
-      'Could not find recognizable Date/Description/Amount columns in the CSV header.',
-    );
-  }
-
-  return records.map((row, index) => {
-    const rawDate = row[dateKey];
-    const rawAmount = row[amountKey];
-    const merchantRaw = row[descriptionKey];
-
-    const date = normalizeDate(rawDate);
-    const amount = Number(rawAmount);
-
-    if (!date || Number.isNaN(amount) || !merchantRaw) {
-      throw new ParseError(
-        'PARSE_ERROR',
-        `Row ${index + 1} is missing or has invalid date/description/amount.`,
-      );
-    }
-
-    return { date, merchantRaw, amount };
-  });
+  return mapTable(table);
 }
 
-function normalizeDate(raw: string): string | null {
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
+/** Back-compat wrapper: rows only. */
+export function parseCsv(fileContent: string): ParsedRow[] {
+  return parseDelimited(fileContent).rows;
 }

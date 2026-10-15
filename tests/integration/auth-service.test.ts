@@ -26,8 +26,9 @@ describe('auth service (register / authenticate)', () => {
     expect(row.passwordHash.startsWith('scrypt$')).toBe(true);
   });
 
-  it('rejects a duplicate email (case-insensitively)', async () => {
-    await registerUser(client, { email: 'dup@example.com', password: 'a-long-password' });
+  it('rejects a duplicate email once the first owner has verified it (case-insensitively)', async () => {
+    const first = await registerUser(client, { email: 'dup@example.com', password: 'a-long-password' });
+    await client.user.update({ where: { id: first.id }, data: { emailVerifiedAt: new Date() } });
     await expect(
       registerUser(client, { email: 'DUP@example.com', password: 'another-password' }),
     ).rejects.toBeInstanceOf(EmailTakenError);
@@ -36,7 +37,7 @@ describe('auth service (register / authenticate)', () => {
   it('authenticates the right password and returns the public user', async () => {
     const created = await registerUser(client, { email: 'login@example.com', password: 'right-password' });
     const user = await authenticateUser(client, { email: 'LOGIN@example.com', password: 'right-password' });
-    expect(user).toEqual({ id: created.id, email: 'login@example.com' });
+    expect(user).toEqual({ id: created.id, email: 'login@example.com', emailVerified: false });
   });
 
   it('returns null for a wrong password and for an unknown email (indistinguishable)', async () => {

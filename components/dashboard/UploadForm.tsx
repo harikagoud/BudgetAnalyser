@@ -5,6 +5,7 @@ import { useState, FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiFetch } from '@/lib/api-base';
+import { ACCEPT_ATTRIBUTE, FORMAT_LABEL } from '@/lib/import/formats';
 
 interface ImportResult {
   importBatchId: string;
@@ -12,6 +13,7 @@ interface ImportResult {
   duplicateCount: number;
   errorCount: number;
   categories: Record<string, number>;
+  notes?: string[];
 }
 
 export function UploadForm({ onImported }: { onImported?: () => void }) {
@@ -25,7 +27,7 @@ export function UploadForm({ onImported }: { onImported?: () => void }) {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!file) {
-      setError('Please choose a CSV or OFX file.');
+      setError('Please choose a statement file.');
       return;
     }
     setStatus('uploading');
@@ -75,15 +77,16 @@ export function UploadForm({ onImported }: { onImported?: () => void }) {
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-slate-700" htmlFor="file">
-              CSV or OFX file
+              Statement file
             </label>
             <input
               id="file"
               type="file"
-              accept=".csv,.ofx"
+              accept={ACCEPT_ATTRIBUTE}
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               className="text-sm text-slate-600 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
             />
+            <p className="text-xs text-slate-500">{FORMAT_LABEL}. Up to 4 MB.</p>
           </div>
           <Button type="submit" disabled={status === 'uploading'}>
             {status === 'uploading' ? 'Importing…' : 'Import statement'}
@@ -95,6 +98,12 @@ export function UploadForm({ onImported }: { onImported?: () => void }) {
             <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800 ring-1 ring-inset ring-emerald-200">
               Imported {result.transactionCount} transactions
               {result.duplicateCount > 0 && ` (${result.duplicateCount} duplicates skipped)`}.
+              {result.errorCount > 0 && ` ${result.errorCount} lines looked like transactions but could not be read.`}
+              {result.notes?.map((n) => (
+                <p key={n} className="mt-1 text-xs text-emerald-900">
+                  {n}
+                </p>
+              ))}
             </div>
           )}
         </form>

@@ -26,7 +26,7 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
-const PUBLIC_PATHS = ['/login', '/register'];
+const PUBLIC_PATHS = ['/login', '/register', '/verify-email'];
 
 function isPublic(pathname: string): boolean {
   const p = pathname.replace(/\/+$/, '') || '/';

@@ -14,7 +14,8 @@ JSON. All endpoints run on the local server (`127.0.0.1`) only in dev.
 > global. Pre-login data (single anonymous user) is deleted by migration
 > `20261014000000_add_users_and_ownership`.
 
-Every `/api/*` route except `login`, `register` and `logout` requires a valid
+Every `/api/*` route except `login`, `register`, `logout`, `verify-email`,
+`resend-verification` and `health` requires a valid
 session token, supplied either as the httpOnly `ba_token` cookie (web) or
 `Authorization: Bearer <token>` (mobile app). Otherwise: **401**
 `{ "error": "UNAUTHORIZED", "message": "Sign in required." }`.
@@ -32,11 +33,34 @@ protected routes fail closed with **500** `SERVER_MISCONFIGURED`.
 
 ### POST /api/auth/register
 **Request**: `{ "email": "a@b.co", "password": "min 8, max 128 chars" }`
-**201**: `{ "user": { "id", "email" }, "token": "..." }` + `Set-Cookie: ba_token=...; HttpOnly; SameSite=Lax`
-**400** `INVALID_BODY` · **409** `EMAIL_TAKEN` (case-insensitive)
+**201**: `{ "pendingVerification": true, "email": "a@b.co", "emailSent": true }` —
+**no session is issued**; a verification link is emailed (`emailSent:false` if
+the send failed; the account exists and the user can request a resend).
+Registering again with an email that is still **unverified** replaces its
+password and re-sends the link (prevents squatting someone else's address).
+**400** `INVALID_BODY` · **409** `EMAIL_TAKEN` (case-insensitive, verified accounts only)
+
+### POST /api/auth/verify-email *(public)*
+**Request**: `{ "token": "<from the emailed link>", "password": "<the account's password>" }`.
+**200** `{ "ok": true }` (idempotent) · **400** `INVALID_OR_EXPIRED_TOKEN` /
+`INVALID_BODY` · **403** `INVALID_PASSWORD` · **429** after 10 failures per IP
+per hour (in-memory, per process). Tokens last 24 h and are purpose-bound
+(derived HMAC key): a session token is not a verification token and vice-versa.
+The password is required so a squatter who registered someone else's address
+with their own password can't get the real owner to activate it — the owner
+doesn't know that password. The link is `APP_URL/verify-email?token=…`
+(never built from request headers).
+
+### POST /api/auth/resend-verification *(public)*
+**Request**: `{ "email": "a@b.co" }`. Always **200** with the same body whether
+or not the address exists/is already verified (no enumeration). **429** after
+3 requests per email or 10 per IP per hour (in-memory, per process).
 
 ### POST /api/auth/login
-**Request**: same shape. **200**: same as register (no 201).
+**Request**: same shape. **200**: `{ "user": { "id", "email" }, "token": "..." }` +
+`Set-Cookie: ba_token=...; HttpOnly; SameSite=Lax`.
+**403** `EMAIL_NOT_VERIFIED` — correct password but the email link was never
+clicked (no session issued; not counted as a throttle failure).
 **401** `INVALID_CREDENTIALS` — identical for wrong password, unknown email
 and malformed input (no user enumeration; unknown emails cost the same
 hashing time). **429** `TOO_MANY_ATTEMPTS` after 5 failures per (IP, email)

@@ -31,29 +31,35 @@
     "csv-parse": "^7.0.3",
     "lucide-react": "^1.53.0",
     "next": "14.2.35",
+    "nodemailer": "^10.1.1",
     "ofx-js": "^1.1.2",
     "pino": "^10.4.0",
     "plaid": "^48.0.0",
     "react": "^18",
     "react-dom": "^18",
     "react-plaid-link": "^5.0.0",
+    "read-excel-file": "^9.3.12",
     "recharts": "^3.10.1",
     "tailwind-merge": "^3.7.0",
+    "unpdf": "^1.8.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
     "eslint-config-prettier": "^10.1.8",
+    "pdf-lib": "^1.17.1",
     "postcss": "^8",
     "prettier": "^3.9.9",
     "prisma": "^6.19.3",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.23.15",
     "typescript": "^5",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "write-excel-file": "^4.1.1"
   }
 }

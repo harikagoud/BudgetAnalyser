@@ -8,6 +8,11 @@ export interface PublicUser {
   email: string;
 }
 
+/** What login learns about the account on top of the public fields. */
+export interface AuthenticatedUser extends PublicUser {
+  emailVerified: boolean;
+}
+
 export class EmailTakenError extends Error {
   constructor() {
     super('An account with that email already exists.');
@@ -22,9 +27,16 @@ export async function registerUser(
 ): Promise<PublicUser> {
   const normalized = email.trim().toLowerCase();
   const existing = await client.user.findUnique({ where: { email: normalized } });
-  if (existing) throw new EmailTakenError();
+  if (existing?.emailVerifiedAt) throw new EmailTakenError();
 
   const passwordHash = await hashPassword(password);
+  if (existing) {
+    // Still unverified: whoever registers again replaces the password. Otherwise
+    // someone could squat an address with their own password and the real owner
+    // would later verify an account the squatter can log into.
+    const updated = await client.user.update({ where: { id: existing.id }, data: { passwordHash } });
+    return { id: updated.id, email: updated.email };
+  }
   try {
     const user = await client.user.create({ data: { email: normalized, passwordHash } });
     return { id: user.id, email: user.email };
@@ -43,16 +55,16 @@ function getDummyHash(): Promise<string> {
   return dummyHashPromise;
 }
 
-/** Returns the public user on success; null for unknown email OR wrong password. */
+/** Returns the user on success; null for unknown email OR wrong password. */
 export async function authenticateUser(
   client: PrismaClient = defaultPrisma,
   { email, password }: Credentials,
-): Promise<PublicUser | null> {
+): Promise<AuthenticatedUser | null> {
   const user = await client.user.findUnique({ where: { email: email.trim().toLowerCase() } });
   if (!user) {
     await verifyPassword(password, await getDummyHash());
     return null;
   }
   const ok = await verifyPassword(password, user.passwordHash);
-  return ok ? { id: user.id, email: user.email } : null;
+  return ok ? { id: user.id, email: user.email, emailVerified: user.emailVerifiedAt !== null } : null;
 }

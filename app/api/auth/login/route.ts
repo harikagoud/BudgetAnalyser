@@ -42,8 +42,18 @@ export async function POST(req: NextRequest) {
       );
     }
     throttle.reset(key);
+    if (!user.emailVerified) {
+      // Only reached with the correct password, so this reveals nothing to a guesser.
+      return NextResponse.json(
+        {
+          error: 'EMAIL_NOT_VERIFIED',
+          message: 'Please verify your email first. Check your inbox for the link, or request a new one.',
+        },
+        { status: 403 },
+      );
+    }
     const token = await signToken(user.id);
-    const res = NextResponse.json({ user, token });
+    const res = NextResponse.json({ user: { id: user.id, email: user.email }, token });
     res.headers.append('Set-Cookie', sessionCookie(token, req.nextUrl.protocol === 'https:'));
     return res;
   } catch (err) {

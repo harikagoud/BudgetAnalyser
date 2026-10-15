@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger';
 import { getUserId, unauthorized } from '@/lib/auth/request';
 import { getOwnedAccount } from '@/lib/accounts';
 import { MAX_UPLOAD_BYTES } from '@/lib/import/limits';
+import { BINARY_FORMATS, detectFormat, FORMAT_LABEL } from '@/lib/import/formats';
 
 export async function POST(req: NextRequest) {
   const userId = getUserId(req);
@@ -48,13 +49,12 @@ export async function POST(req: NextRequest) {
     }
     const { accountId: accountIdField, accountName } = parsedFields.data;
 
-    const lowerName = file.name.toLowerCase();
-    const format = lowerName.endsWith('.ofx') ? 'OFX' : lowerName.endsWith('.csv') ? 'CSV' : null;
+    const format = detectFormat(file.name);
     if (!format) {
       return NextResponse.json(
         {
           error: 'UNRECOGNIZED_FORMAT',
-          message: 'Only .csv and .ofx files are supported.',
+          message: `Unsupported file type. Supported: ${FORMAT_LABEL}.`,
         },
         { status: 400 },
       );
@@ -81,13 +81,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const fileContent = await file.text();
+    // Read bytes once (size already capped above). Binary formats are verified by
+    // their signature, not just the extension, before any parser touches them.
+    const fileBytes = new Uint8Array(await file.arrayBuffer());
+    if (BINARY_FORMATS.has(format) && !hasExpectedSignature(format, fileBytes)) {
+      throw new ParseError('PARSE_ERROR', `This file does not look like a real ${format === 'PDF' ? 'PDF' : '.xlsx'} file.`);
+    }
 
     const result = await importStatement({
       userId,
       accountId,
       fileName: file.name,
-      fileContent,
+      fileBytes,
       format,
     });
 
@@ -106,4 +111,9 @@ export async function POST(req: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+function hasExpectedSignature(format: 'XLSX' | 'PDF' | string, bytes: Uint8Array): boolean {
+  if (format === 'PDF') return bytes.length > 4 && String.fromCharCode(...Array.from(bytes.slice(0, 5))) === '%PDF-';
+  return bytes.length > 3 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04; // "PK\x03\x04"
 }

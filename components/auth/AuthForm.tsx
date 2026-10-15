@@ -39,6 +39,25 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set after register, or when login is refused for an unverified email.
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [resendNote, setResendNote] = useState<string | null>(null);
+
+  async function handleResend() {
+    if (!pendingEmail) return;
+    setResendNote(null);
+    try {
+      const res = await apiFetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: pendingEmail }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setResendNote(data.message ?? 'Please try again later.');
+    } catch {
+      setResendNote('Could not reach the server. Try again.');
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -53,6 +72,14 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.message ?? 'Something went wrong. Please try again.');
+        if (data.error === 'EMAIL_NOT_VERIFIED') setPendingEmail(email.trim().toLowerCase());
+        return;
+      }
+      if (data.pendingVerification) {
+        setPendingEmail(data.email); // registered; waiting for the emailed link
+        if (data.emailSent === false) {
+          setError('Your account was created but we could not send the email. Use "Resend" below.');
+        }
         return;
       }
       if (data.token) storeToken(data.token); // no-op on web (cookie is used)
@@ -66,6 +93,32 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
 
   const inputClass =
     'h-11 rounded-lg border border-slate-300 px-3 text-sm shadow-sm transition-colors hover:border-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100';
+
+  if (pendingEmail && mode === 'register') {
+    return (
+      <div className="mx-auto flex max-w-sm flex-col gap-4 pt-6">
+        <Card className="flex flex-col gap-3 p-6 text-center">
+          <h1 className="text-xl font-semibold text-slate-900">Check your email</h1>
+          <p className="text-sm text-slate-600">
+            We sent a verification link to <strong>{pendingEmail}</strong>. Click it, then sign in. The
+            link expires in 24 hours.
+          </p>
+          {error && (
+            <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 ring-1 ring-inset ring-red-200">
+              {error}
+            </p>
+          )}
+          <Button type="button" onClick={handleResend} className="h-11">
+            Resend email
+          </Button>
+          {resendNote && <p className="text-xs text-slate-500">{resendNote}</p>}
+          <Link href="/login" className="text-sm font-medium text-brand-600 hover:underline">
+            Go to sign in
+          </Link>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex max-w-sm flex-col gap-6 pt-6">
@@ -126,6 +179,14 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
             <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 ring-1 ring-inset ring-red-200">
               {error}
             </p>
+          )}
+          {pendingEmail && mode === 'login' && (
+            <div className="flex flex-col gap-1 text-sm">
+              <button type="button" onClick={handleResend} className="self-start font-medium text-brand-600 hover:underline">
+                Resend verification email
+              </button>
+              {resendNote && <span className="text-xs text-slate-500">{resendNote}</span>}
+            </div>
           )}
 
           <Button type="submit" disabled={busy || !email || !password} className="h-11">

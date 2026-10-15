@@ -24,7 +24,7 @@ function b64urlDecode(str: string): Uint8Array {
   return out;
 }
 
-async function getKey(): Promise<CryptoKey> {
+async function getKey(purpose?: string): Promise<CryptoKey> {
   const raw = process.env.AUTH_SECRET;
   if (!raw) {
     throw new Error(
@@ -37,26 +37,33 @@ async function getKey(): Promise<CryptoKey> {
       `AUTH_SECRET must decode to at least ${MIN_SECRET_BYTES} bytes, got ${bytes.length}. Generate with: openssl rand -base64 32`,
     );
   }
-  return crypto.subtle.importKey('raw', bytes as BufferSource, { name: 'HMAC', hash: 'SHA-256' }, false, [
-    'sign',
-    'verify',
-  ]);
+  const master = await crypto.subtle.importKey(
+    'raw',
+    bytes as BufferSource,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify'],
+  );
+  if (!purpose) return master; // session tokens keep using the secret directly
+  // Single-purpose tokens (email links) get their own derived key, so a token
+  // minted for one purpose can never validate as another (or as a session).
+  const derived = await crypto.subtle.sign('HMAC', master, encoder.encode(`budget-analyser:${purpose}`));
+  return crypto.subtle.importKey('raw', derived, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 }
 
-export async function signToken(userId: string, ttlMs: number = DEFAULT_TTL_MS): Promise<string> {
-  const key = await getKey();
+async function signWith(purpose: string | undefined, userId: string, ttlMs: number): Promise<string> {
+  const key = await getKey(purpose);
   const payload = b64urlEncode(encoder.encode(JSON.stringify({ uid: userId, exp: Date.now() + ttlMs })));
   const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(payload));
   return `${payload}.${b64urlEncode(new Uint8Array(sig))}`;
 }
 
-/** Returns the user id for a valid, unexpired token; null otherwise. Never throws on bad input. */
-export async function verifyToken(token: string): Promise<{ userId: string } | null> {
+async function verifyWith(purpose: string | undefined, token: string): Promise<{ userId: string } | null> {
   try {
     const parts = token.split('.');
     if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
     const [payload, sig] = parts;
-    const key = await getKey();
+    const key = await getKey(purpose);
     // crypto.subtle.verify compares in constant time.
     const ok = await crypto.subtle.verify(
       'HMAC',
@@ -76,4 +83,22 @@ export async function verifyToken(token: string): Promise<{ userId: string } | n
     if (err instanceof Error && err.message.startsWith('AUTH_SECRET')) throw err;
     return null;
   }
+}
+
+export function signToken(userId: string, ttlMs: number = DEFAULT_TTL_MS): Promise<string> {
+  return signWith(undefined, userId, ttlMs);
+}
+
+/** Returns the user id for a valid, unexpired SESSION token; null otherwise. Never throws on bad input. */
+export function verifyToken(token: string): Promise<{ userId: string } | null> {
+  return verifyWith(undefined, token);
+}
+
+/** Single-purpose token (e.g. 'verify-email'); valid only for that exact purpose. */
+export function signPurposeToken(purpose: string, userId: string, ttlMs: number): Promise<string> {
+  return signWith(purpose, userId, ttlMs);
+}
+
+export function verifyPurposeToken(purpose: string, token: string): Promise<{ userId: string } | null> {
+  return verifyWith(purpose, token);
 }
