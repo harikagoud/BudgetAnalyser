@@ -111,6 +111,26 @@ function yearContext(lines: string[]): YearContext {
     const fy = (y: string) => (y.length === 2 ? 2000 + +y : +y);
     return { startYear: fy(range[2]), startMonth: +range[1], endYear: fy(range[3]) };
   }
+  const named = /\b([A-Za-z]{3,9})\.? (\d{1,2})(?:,? (\d{4}))?\s*(?:-|–|to|through)\s*([A-Za-z]{3,9})\.? (\d{1,2}),? (\d{4})/.exec(text);
+  if (named) {
+    const monthIndex = (m: string) =>
+      ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(m.slice(0, 3).toLowerCase());
+    const startM = monthIndex(named[1]);
+    const endM = monthIndex(named[4]);
+    if (startM !== -1 && endM !== -1) {
+      const endYear = +named[6];
+      const startYear = named[3] ? +named[3] : startM > endM ? endYear - 1 : endYear;
+      return { startYear, startMonth: startM + 1, endYear };
+    }
+  }
+  // No period range printed: use the closing date. Rows dated after the closing month
+  // belong to the previous year (a Dec/Jan statement closing in January).
+  const closing = /(?:statement )?closing date:?\s*(\d{1,2})\/\d{1,2}\/(\d{4})/i.exec(text);
+  if (closing) {
+    const endMonth = +closing[1];
+    const endYear = +closing[2];
+    return { startYear: endYear - 1, startMonth: endMonth + 1, endYear };
+  }
   const years = Array.from(lines.join('\n').matchAll(/\b(20\d{2})\b/g)).map((m) => +m[1]);
   const counts = new Map<number, number>();
   for (const y of years) counts.set(y, (counts.get(y) ?? 0) + 1);

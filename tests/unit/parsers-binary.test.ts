@@ -100,6 +100,36 @@ describe('PDF', () => {
     ]);
   });
 
+  it('year comes from a "Month D - Month D, YYYY" period (named months)', () => {
+    const out = extractTransactions([
+      'Billing period September 6 - October 5, 2026',
+      '09/07 09/08 SAMS CLUB #8112 PLANO TX 132.68',
+      '10/02 10/02 PAYMENT FROM CHK 1234 -1,395.71',
+    ]);
+    expect(out.rows.map((r) => [r.date, r.amount])).toEqual([
+      ['2026-09-07', 132.68],
+      ['2026-10-02', -1395.71],
+    ]);
+  });
+
+  it('a named period that crosses the new year puts December rows in the earlier year', () => {
+    const out = extractTransactions([
+      'Billing period December 6 - January 5, 2027',
+      '12/07 12/08 NETFLIX.COM 15.49',
+      '01/02 01/03 STARBUCKS 4.50',
+    ]);
+    expect(out.rows.map((r) => r.date)).toEqual(['2026-12-07', '2027-01-02']);
+  });
+
+  it('no period range: the closing date sets the year (January close, December rows)', () => {
+    const out = extractTransactions([
+      'Statement Closing Date 01/05/2027',
+      '12/28 12/29 NETFLIX.COM 15.49',
+      '01/02 01/03 STARBUCKS 4.50',
+    ]);
+    expect(out.rows.map((r) => r.date)).toEqual(['2026-12-28', '2027-01-02']);
+  });
+
   it('counts lines that look like transactions but cannot be read', () => {
     const out = extractTransactions(['09/02/2026 COFFEE SHOP 4.50', '09/03/2026 MYSTERY LINE WITH NO MONEY', '09/04/2026 LUNCH 12.00']);
     expect(out.rows).toHaveLength(2);

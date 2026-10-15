@@ -13,8 +13,17 @@ export async function seedDefaults(client: PrismaClient): Promise<void> {
   for (const cat of DEFAULT_CATEGORIES) {
     const created = await client.category.upsert({
       where: { name: cat.name },
-      update: { isDiscretionary: cat.isDiscretionary, isDefault: true },
-      create: { name: cat.name, isDiscretionary: cat.isDiscretionary, isDefault: true },
+      update: {
+        isDiscretionary: cat.isDiscretionary,
+        isDefault: true,
+        excludeFromSpending: cat.excludeFromSpending ?? false,
+      },
+      create: {
+        name: cat.name,
+        isDiscretionary: cat.isDiscretionary,
+        isDefault: true,
+        excludeFromSpending: cat.excludeFromSpending ?? false,
+      },
     });
     categoryIdByName.set(cat.name, created.id);
   }

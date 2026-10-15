@@ -81,10 +81,13 @@ model Transaction {
 }
 
 model Category {
-  id              String  @id @default(cuid())
-  name            String  @unique
-  isDiscretionary Boolean
-  isDefault       Boolean @default(false)
+  id                  String  @id @default(cuid())
+  name                String  @unique
+  isDiscretionary     Boolean
+  isDefault           Boolean @default(false)
+  /// True for money movements that are not spending (card payments, transfers):
+  /// their transactions are kept but left out of every spend total.
+  excludeFromSpending Boolean @default(false)
 
   transactions  Transaction[]
   merchantRules MerchantRule[]

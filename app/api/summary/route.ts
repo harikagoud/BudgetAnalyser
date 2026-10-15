@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { computeMonthlySummaryFromDb } from '@/lib/aggregation/monthly-summary';
+import { prisma } from '@/lib/db/client';
 import { getUserId, unauthorized } from '@/lib/auth/request';
 
 export async function GET(req: NextRequest) {
@@ -13,9 +14,15 @@ export async function GET(req: NextRequest) {
   const months = Number.isFinite(parsedMonths) ? Math.min(Math.max(Math.trunc(parsedMonths), 1), 120) : 6;
 
   const summaries = await computeMonthlySummaryFromDb({ userId, months });
+  // Every category, including non-spending ones (Payments/Transfers), so a transaction
+  // can be moved into them from the dashboard even though they are not in the totals.
+  const assignableCategories = await prisma.category.findMany({
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  });
 
   if (summaries.length === 0) {
-    return NextResponse.json({ months: [], partialMonths: [], categories: [], insufficientHistory: true });
+    return NextResponse.json({ months: [], partialMonths: [], categories: [], insufficientHistory: true, assignableCategories });
   }
 
   const monthKeys = summaries.map((s) => s.yearMonth);
@@ -72,5 +79,6 @@ export async function GET(req: NextRequest) {
     partialMonths: summaries.filter((s) => s.isPartialMonth).map((s) => s.yearMonth),
     categories,
     insufficientHistory,
+    assignableCategories,
   });
 }

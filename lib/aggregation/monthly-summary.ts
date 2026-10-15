@@ -189,12 +189,17 @@ export async function computeMonthlySummaryFromDb(
     client.transaction.findMany({
       where: {
         account: { userId: options.userId },
+        // Card payments / transfers are money moving, not spending.
+        category: { excludeFromSpending: false },
         ...(options.accountId ? { accountId: options.accountId } : {}),
       },
       select: { date: true, amount: true, categoryId: true },
       orderBy: { date: 'asc' },
     }),
-    client.category.findMany({ select: { id: true, name: true, isDiscretionary: true } }),
+    client.category.findMany({
+      where: { excludeFromSpending: false },
+      select: { id: true, name: true, isDiscretionary: true },
+    }),
   ]);
 
   const txLike: TxLike[] = transactions.map((t) => ({

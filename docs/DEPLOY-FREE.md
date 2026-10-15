@@ -83,13 +83,26 @@ Run **Part 4** of `prisma/neon-setup.sql` (the `CREATE TABLE "BudgetLimit"` bloc
 Neon's SQL Editor **before** the code that uses it deploys, or the Budgets pages and
 the nav-bar bell return errors.
 
+## 5b. Category recognition (new column + ~470 merchant rules)
+Run **Part 5** of `prisma/neon-setup.sql` (starts at `-- ===== Part 5`) in Neon's SQL
+Editor **before** deploying this version — the app now reads
+`Category.excludeFromSpending`, so every page errors until the column exists. Part 5
+is idempotent (safe to run twice). The editor may warn that query history will be
+truncated; the query still runs. Regenerate it after editing
+`lib/categorization/rules.ts` with `npx tsx prisma/gen-neon-part5.ts`.
+
+After deploying, open the Dashboard and press **Re-categorize with latest rules**
+once to fix transactions imported earlier. Categories you set by hand are never
+changed.
+
 Later, from a network that can reach Neon on port 5432, tell Prisma those changes
-are already applied (one command per migration), so future `migrate deploy` runs
+are already applied (one command per migration, four after Part 5), so future `migrate deploy` runs
 don't try to re-create them:
 ```bash
 DATABASE_URL="$D" DIRECT_URL="$D" npx prisma migrate resolve --applied 20261014120000_init_postgres
 DATABASE_URL="$D" DIRECT_URL="$D" npx prisma migrate resolve --applied 20261014180000_add_email_verification
 DATABASE_URL="$D" DIRECT_URL="$D" npx prisma migrate resolve --applied 20261015120000_add_budget_limits
+DATABASE_URL="$D" DIRECT_URL="$D" npx prisma migrate resolve --applied 20261016120000_category_exclude_from_spending
 ```
 
 ## Known limits of this setup

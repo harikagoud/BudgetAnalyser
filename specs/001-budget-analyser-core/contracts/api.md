@@ -103,6 +103,14 @@ Limits are removed with the account.
   for the months the import added transactions to (empty when no limit is
   near/over). Alerts are computed when data is loaded; nothing is pushed while
   the app is closed.
+- `POST /api/transactions/recategorize` — re-runs the current rules over the
+  caller's own transactions, skipping `USER_OVERRIDE` rows. **200**
+  `{ scanned, changed }`. Idempotent.
+- Categories flagged `excludeFromSpending` (**Payments/Transfers**: card payments,
+  transfers, paychecks) are left out of `GET /api/summary`, budgets and
+  recommendations. `GET /api/summary` returns `assignableCategories` (all
+  categories) for the recategorize dropdown. Import skips `$0.00` lines and says
+  so in `notes`.
 - `GET /api/summary` now also returns `partialMonths` (months whose data starts
   mid-month) and clamps `months` to 1–120.
 

@@ -72,7 +72,7 @@ export async function getBudgetReport(
   const [limits, summaries, categoryRows] = await Promise.all([
     listLimits(client, userId),
     computeMonthlySummaryFromDb({ userId, months: 120 }, client),
-    client.category.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    client.category.findMany({ where: { excludeFromSpending: false }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ]);
   const months = summaries.map((s) => s.yearMonth);
   const chosen = month && months.includes(month) ? month : (months[months.length - 1] ?? null);

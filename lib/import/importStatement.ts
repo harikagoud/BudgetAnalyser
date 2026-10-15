@@ -45,11 +45,19 @@ export async function importStatement(
   params: ImportParams,
   client: PrismaClient = defaultPrisma,
 ): Promise<ImportResult> {
-  const { rows, notes, skipped } = await parseStatementFile({
+  const parsed = await parseStatementFile({
     format: params.format,
     text: params.fileContent,
     bytes: params.fileBytes,
   });
+  const { skipped } = parsed;
+  const notes = [...parsed.notes];
+  // Statements list $0.00 lines (e.g. "INTEREST CHARGED ON PURCHASES 0.00"). They carry no
+  // spending, only noise on the review list.
+  const rows = parsed.rows.filter((r) => r.amount !== 0);
+  if (rows.length < parsed.rows.length) {
+    notes.push(`${parsed.rows.length - rows.length} zero-amount line(s) were skipped.`);
+  }
 
   if (rows.length > MAX_IMPORT_ROWS) {
     throw new ParseError(

@@ -36,6 +36,7 @@ interface SummaryResponse {
   months: string[];
   categories: SummaryCategory[];
   insufficientHistory: boolean;
+  assignableCategories?: Array<{ id: string; name: string }>;
 }
 
 interface TransactionRow {
@@ -54,6 +55,8 @@ export default function DashboardPage() {
   // null = "follow the latest month"; otherwise the user's explicit pick.
   const [pickedMonth, setPickedMonth] = useState<string | null>(null);
   const [alerts, setAlerts] = useState<BudgetStatus[]>([]);
+  const [recategorizing, setRecategorizing] = useState(false);
+  const [recategorizeNote, setRecategorizeNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,6 +116,26 @@ export default function DashboardPage() {
     load();
   }
 
+  async function handleRecategorizeAll() {
+    setRecategorizing(true);
+    setRecategorizeNote(null);
+    try {
+      const res = await apiFetch('/api/transactions/recategorize', { method: 'POST' });
+      if (!res.ok) throw new Error('failed');
+      const data: { scanned: number; changed: number } = await res.json();
+      setRecategorizeNote(
+        data.changed === 0
+          ? 'Nothing to update — categories are already current.'
+          : `Updated ${data.changed} transaction${data.changed === 1 ? '' : 's'}.`,
+      );
+      await load();
+    } catch {
+      setRecategorizeNote('Could not re-categorize right now. Please try again.');
+    } finally {
+      setRecategorizing(false);
+    }
+  }
+
   if (loading) {
     return <PageSkeleton />;
   }
@@ -144,7 +167,8 @@ export default function DashboardPage() {
   const chartData = sorted.filter((c) => c.total > 0).map((c) => ({ name: c.name, total: c.total }));
   const transactionTotal = totals.reduce((sum, c) => sum + c.transactionCount, 0);
 
-  const allCategories = summary.categories.map((c) => ({ id: c.categoryId, name: c.name }));
+  const allCategories =
+    summary.assignableCategories ?? summary.categories.map((c) => ({ id: c.categoryId, name: c.name }));
 
   return (
     <div className="flex flex-col gap-8">
@@ -178,6 +202,18 @@ export default function DashboardPage() {
       />
 
       <BudgetAlerts month={month} alerts={alerts} />
+
+          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+            <button
+              type="button"
+              onClick={handleRecategorizeAll}
+              disabled={recategorizing}
+              className="rounded-md border border-slate-300 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {recategorizing ? 'Re-categorizing…' : 'Re-categorize with latest rules'}
+            </button>
+            {recategorizeNote && <span role="status">{recategorizeNote}</span>}
+          </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
