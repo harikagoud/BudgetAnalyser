@@ -1,11 +1,20 @@
 import type { PrismaClient } from '@prisma/client';
 import { prisma as defaultPrisma } from '@/lib/db/client';
-import { signPurposeToken, verifyPurposeToken } from '@/lib/auth/token';
+import { peekTokenUserId, signPurposeToken, verifyPurposeToken } from '@/lib/auth/token';
 import { sendEmail } from '@/lib/email/send';
-import { verifyPassword } from '@/lib/auth/password';
 import { logger } from '@/lib/logger';
+import crypto from 'crypto';
 
 const PURPOSE = 'verify-email';
+
+/**
+ * The link's signing purpose includes a fingerprint of the account's current
+ * password hash. Registering again for a still-unverified address replaces the
+ * password, which makes every link sent before that stop working.
+ */
+function purposeFor(passwordHash: string): string {
+  return `${PURPOSE}:${crypto.createHash('sha256').update(passwordHash).digest('hex').slice(0, 16)}`;
+}
 export const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** Base URL for links in emails. Never derived from request headers (Host-header spoofing). */
@@ -18,12 +27,21 @@ export function appBaseUrl(): string {
   return 'http://127.0.0.1:3000';
 }
 
-export function signVerificationToken(userId: string, ttlMs: number = VERIFY_TTL_MS): Promise<string> {
-  return signPurposeToken(PURPOSE, userId, ttlMs);
+export async function signVerificationToken(
+  userId: string,
+  ttlMs: number = VERIFY_TTL_MS,
+  client: PrismaClient = defaultPrisma,
+): Promise<string> {
+  const user = await client.user.findUniqueOrThrow({ where: { id: userId } });
+  return signPurposeToken(purposeFor(user.passwordHash), userId, ttlMs);
 }
 
-export async function sendVerificationEmail(user: { id: string; email: string }): Promise<void> {
-  const url = `${appBaseUrl()}/verify-email?token=${encodeURIComponent(await signVerificationToken(user.id))}`;
+export async function sendVerificationEmail(
+  user: { id: string; email: string },
+  client: PrismaClient = defaultPrisma,
+): Promise<void> {
+  const token = await signVerificationToken(user.id, VERIFY_TTL_MS, client);
+  const url = `${appBaseUrl()}/verify-email?token=${encodeURIComponent(token)}`;
   if (process.env.NODE_ENV !== 'production' && !process.env.SMTP_HOST) {
     logger.info({ to: user.email, verifyUrl: url }, 'DEV ONLY: verification link');
   }
@@ -35,33 +53,28 @@ export async function sendVerificationEmail(user: { id: string; email: string })
   });
 }
 
-export type VerifyOutcome = 'OK' | 'INVALID_TOKEN' | 'BAD_PASSWORD';
-
 /**
- * Verifies the account when the token is valid AND the caller proves they know
- * the account's current password. The password check is what stops a squatter:
- * someone who registers a victim's address with their own password cannot get
- * the victim to "verify" it, because the victim doesn't know that password
- * (and the squatter can't read the victim's mailbox to use the link).
- * Idempotent for an already-verified account.
+ * True when the token is valid for this account's CURRENT password and the
+ * account is (now or already) verified. Idempotent. Links sent before the
+ * password was replaced (by a later sign-up for the same address) are rejected.
  */
 export async function verifyEmailToken(
   client: PrismaClient = defaultPrisma,
   token: string,
-  password: string,
-): Promise<VerifyOutcome> {
-  const decoded = await verifyPurposeToken(PURPOSE, token);
-  if (!decoded) return 'INVALID_TOKEN';
-  const user = await client.user.findUnique({ where: { id: decoded.userId } });
-  if (!user) return 'INVALID_TOKEN';
-  if (!(await verifyPassword(password, user.passwordHash))) return 'BAD_PASSWORD';
+): Promise<boolean> {
+  const uid = peekTokenUserId(token);
+  if (!uid) return false;
+  const user = await client.user.findUnique({ where: { id: uid } });
+  if (!user) return false;
+  const decoded = await verifyPurposeToken(purposeFor(user.passwordHash), token);
+  if (!decoded || decoded.userId !== user.id) return false;
   if (!user.emailVerifiedAt) {
     await client.user.updateMany({
       where: { id: user.id, emailVerifiedAt: null },
       data: { emailVerifiedAt: new Date() },
     });
   }
-  return 'OK';
+  return true;
 }
 
 /** The user to (re)send a verification email to: exists AND not yet verified; else null. */

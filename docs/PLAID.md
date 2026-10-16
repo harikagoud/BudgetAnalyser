@@ -30,6 +30,14 @@ Then Accounts → **Connect your bank (sandbox)**, pick any bank, sign in with
 `user_good` / `pass_good`. You should see an account appear with transactions.
 "Sync now" refreshes it; the account card shows when it was last synced.
 
+## Before applying for Production
+Plaid reviews your use case and normally wants a privacy policy and terms link. The app now
+serves them at `/privacy` and `/terms` (linked in the footer, readable signed out). They describe
+what the app actually does, but they are a starting point, **not legal advice** — have someone
+qualified review them before relying on them. Set `NEXT_PUBLIC_CONTACT_EMAIL` in Vercel (a real
+mailbox you read) and redeploy so the "Contact" lines show it. Use these URLs in the Plaid
+application: `https://<your-site>/privacy` and `https://<your-site>/terms`.
+
 ## Step 2 — real banks (Bank of America, Chase, …)
 1. Request Production access in the Plaid dashboard and switch `PLAID_SECRET` to the
    production secret and `PLAID_ENV=production`.

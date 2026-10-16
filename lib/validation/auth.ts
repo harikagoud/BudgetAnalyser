@@ -29,5 +29,4 @@ export const EmailOnlySchema = z.object({
 
 export const VerifyEmailSchema = z.object({
   token: z.string().min(1).max(2048),
-  password: z.string().min(1).max(PASSWORD_MAX),
 });

@@ -41,15 +41,18 @@ password and re-sends the link (prevents squatting someone else's address).
 **400** `INVALID_BODY` · **409** `EMAIL_TAKEN` (case-insensitive, verified accounts only)
 
 ### POST /api/auth/verify-email *(public)*
-**Request**: `{ "token": "<from the emailed link>", "password": "<the account's password>" }`.
-**200** `{ "ok": true }` (idempotent) · **400** `INVALID_OR_EXPIRED_TOKEN` /
-`INVALID_BODY` · **403** `INVALID_PASSWORD` · **429** after 10 failures per IP
-per hour (in-memory, per process). Tokens last 24 h and are purpose-bound
-(derived HMAC key): a session token is not a verification token and vice-versa.
-The password is required so a squatter who registered someone else's address
-with their own password can't get the real owner to activate it — the owner
-doesn't know that password. The link is `APP_URL/verify-email?token=…`
-(never built from request headers).
+**Request**: `{ "token": "<from the emailed link>" }`. **200** `{ "ok": true }`
+(idempotent) · **400** `INVALID_OR_EXPIRED_TOKEN`. The link is
+`APP_URL/verify-email?token=…` (never built from request headers); the page
+shows a "Confirm my email" button that sends this POST, so link prefetchers and
+mail scanners can't verify an account by merely loading the page. Tokens last
+24 h and are signed with a key derived from a fingerprint of the account's
+**current password hash**, so registering again for a still-unverified address
+(which replaces its password) invalidates every link sent earlier. Tokens are
+also purpose-bound: a session token is not a verification token and vice-versa.
+Known limitation: whoever signs up first with someone else's address owns the
+account if the real owner clicks the email — a password-reset flow is the
+remedy and is not built yet.
 
 ### POST /api/auth/resend-verification *(public)*
 **Request**: `{ "email": "a@b.co" }`. Always **200** with the same body whether

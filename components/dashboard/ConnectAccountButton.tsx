@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { usePlaidLink, type PlaidLinkOnSuccessMetadata } from 'react-plaid-link';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api-base';
+import { linkedAccountName } from '@/lib/plaid/label';
 
 /** Banks that use OAuth leave the app and come back to /plaid-oauth, which needs this token again. */
 export const LINK_TOKEN_STORAGE_KEY = 'plaid_link_token';
@@ -16,7 +17,7 @@ export async function finishLink(publicToken: string, metadata: PlaidLinkOnSucce
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       publicToken,
-      accountName: metadata.institution?.name ?? 'Linked Account',
+      accountName: linkedAccountName(metadata),
       institutionName: metadata.institution?.name ?? null,
     }),
   });

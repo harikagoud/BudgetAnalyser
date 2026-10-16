@@ -8,7 +8,7 @@ import {
   signVerificationToken,
   verifyEmailToken,
 } from '@/lib/auth/verification';
-import { signToken } from '@/lib/auth/token';
+import { signPurposeToken, signToken } from '@/lib/auth/token';
 import { EmailNotConfiguredError, sendEmail } from '@/lib/email/send';
 
 describe('email verification', () => {
@@ -42,11 +42,11 @@ describe('email verification', () => {
 
   it('a valid token verifies the account; login then reports verified; repeating is harmless', async () => {
     const u = await registerUser(client, { email: 'v1@example.com', password: 'a-long-password' });
-    const token = await signVerificationToken(u.id);
-    expect(await verifyEmailToken(client, token, 'a-long-password')).toBe('OK');
+    const token = await signVerificationToken(u.id, undefined, client);
+    expect(await verifyEmailToken(client, token)).toBe(true);
     const first = await client.user.findUniqueOrThrow({ where: { id: u.id } });
     expect(first.emailVerifiedAt).not.toBeNull();
-    expect(await verifyEmailToken(client, token, 'a-long-password')).toBe('OK');
+    expect(await verifyEmailToken(client, token)).toBe(true);
     const second = await client.user.findUniqueOrThrow({ where: { id: u.id } });
     expect(second.emailVerifiedAt?.getTime()).toBe(first.emailVerifiedAt?.getTime());
     const auth = await authenticateUser(client, { email: 'v1@example.com', password: 'a-long-password' });
@@ -55,30 +55,38 @@ describe('email verification', () => {
 
   it('rejects expired, garbage, session and unknown-user tokens without verifying anyone', async () => {
     const u = await registerUser(client, { email: 'v2@example.com', password: 'a-long-password' });
-    expect(await verifyEmailToken(client, await signVerificationToken(u.id, -1000), 'a-long-password')).toBe('INVALID_TOKEN');
-    expect(await verifyEmailToken(client, 'garbage', 'a-long-password')).toBe('INVALID_TOKEN');
-    expect(await verifyEmailToken(client, await signToken(u.id), 'a-long-password')).toBe('INVALID_TOKEN'); // a session token
-    expect(await verifyEmailToken(client, await signVerificationToken('no-such-user'), 'a-long-password')).toBe('INVALID_TOKEN');
+    expect(await verifyEmailToken(client, await signVerificationToken(u.id, -1000, client))).toBe(false);
+    expect(await verifyEmailToken(client, 'garbage')).toBe(false);
+    expect(await verifyEmailToken(client, await signToken(u.id))).toBe(false); // a session token
+    // a well-formed, correctly signed token for a user that does not exist
+    expect(await verifyEmailToken(client, await signPurposeToken('verify-email:0000000000000000', 'no-such-user', 60_000))).toBe(false);
     const row = await client.user.findUniqueOrThrow({ where: { id: u.id } });
     expect(row.emailVerifiedAt).toBeNull();
   });
 
-  it('a correct token with the WRONG password does not verify (squatter cannot get the victim to verify)', async () => {
-    // Victim signs up with V and receives link L1; a squatter then re-registers the
-    // same address with password A (replacing V), and the victim gets link L2.
-    const victim = await registerUser(client, { email: 'victim@example.com', password: 'victim-password-1' });
-    const l1 = await signVerificationToken(victim.id);
-    await registerUser(client, { email: 'victim@example.com', password: 'attacker-password-1' });
-    const l2 = await signVerificationToken(victim.id);
+  it('re-registering an unverified address kills every earlier link; only the newest works', async () => {
+    const first = await registerUser(client, { email: 'stale@example.com', password: 'first-password-1' });
+    const l1 = await signVerificationToken(first.id, undefined, client);
+    expect(await verifyEmailToken(client, l1)).toBe(true); // valid now (idempotent re-check below)
+    await client.user.update({ where: { id: first.id }, data: { emailVerifiedAt: null } });
 
-    expect(await verifyEmailToken(client, l1, 'victim-password-1')).toBe('BAD_PASSWORD');
-    expect(await verifyEmailToken(client, l2, 'victim-password-1')).toBe('BAD_PASSWORD');
-    const row = await client.user.findUniqueOrThrow({ where: { id: victim.id } });
-    expect(row.emailVerifiedAt).toBeNull(); // the victim clicking a link never activates the attacker's account
+    await registerUser(client, { email: 'stale@example.com', password: 'second-password-1' });
+    const l2 = await signVerificationToken(first.id, undefined, client);
 
-    // The victim recovers by signing up again with their own password: only that account can be verified.
-    await registerUser(client, { email: 'victim@example.com', password: 'victim-password-1' });
-    expect(await verifyEmailToken(client, await signVerificationToken(victim.id), 'victim-password-1')).toBe('OK');
+    expect(await verifyEmailToken(client, l1)).toBe(false); // L1 predates the password change
+    expect((await client.user.findUniqueOrThrow({ where: { id: first.id } })).emailVerifiedAt).toBeNull();
+    expect(await verifyEmailToken(client, l2)).toBe(true);
+    expect((await client.user.findUniqueOrThrow({ where: { id: first.id } })).emailVerifiedAt).not.toBeNull();
+  });
+
+  it('a link for one user cannot verify another, even with the uid swapped in the payload', async () => {
+    const a = await registerUser(client, { email: 'ua@example.com', password: 'a-long-password' });
+    const b = await registerUser(client, { email: 'ub@example.com', password: 'b-long-password' });
+    const tokenA = await signVerificationToken(a.id, undefined, client);
+    const [, sig] = tokenA.split('.');
+    const forgedPayload = Buffer.from(JSON.stringify({ uid: b.id, exp: Date.now() + 1e6 })).toString('base64url');
+    expect(await verifyEmailToken(client, `${forgedPayload}.${sig}`)).toBe(false);
+    expect((await client.user.findUniqueOrThrow({ where: { id: b.id } })).emailVerifiedAt).toBeNull();
   });
 
   it('re-registering an UNVERIFIED email replaces the password (no squatting)', async () => {
@@ -91,7 +99,7 @@ describe('email verification', () => {
 
   it('re-registering a VERIFIED email is refused', async () => {
     const u = await registerUser(client, { email: 'taken@example.com', password: 'a-long-password' });
-    await verifyEmailToken(client, await signVerificationToken(u.id), 'a-long-password');
+    await verifyEmailToken(client, await signVerificationToken(u.id, undefined, client));
     await expect(
       registerUser(client, { email: 'taken@example.com', password: 'other-password-1' }),
     ).rejects.toBeInstanceOf(EmailTakenError);
@@ -101,7 +109,7 @@ describe('email verification', () => {
     const u = await registerUser(client, { email: 'resend@example.com', password: 'a-long-password' });
     expect(await findUnverifiedUser(client, 'RESEND@example.com')).toEqual({ id: u.id, email: 'resend@example.com' });
     expect(await findUnverifiedUser(client, 'nobody@example.com')).toBeNull();
-    await verifyEmailToken(client, await signVerificationToken(u.id), 'a-long-password');
+    await verifyEmailToken(client, await signVerificationToken(u.id, undefined, client));
     expect(await findUnverifiedUser(client, 'resend@example.com')).toBeNull();
   });
 

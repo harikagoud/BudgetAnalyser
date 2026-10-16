@@ -102,3 +102,18 @@ export function signPurposeToken(purpose: string, userId: string, ttlMs: number)
 export function verifyPurposeToken(purpose: string, token: string): Promise<{ userId: string } | null> {
   return verifyWith(purpose, token);
 }
+
+/**
+ * Reads the user id out of a token WITHOUT checking its signature. Only for
+ * choosing which per-user key to verify with; never trust the result alone.
+ */
+export function peekTokenUserId(token: string): string | null {
+  try {
+    const payload = token.split('.')[0];
+    if (!payload) return null;
+    const data = JSON.parse(new TextDecoder().decode(b64urlDecode(payload)));
+    return typeof data.uid === 'string' ? data.uid : null;
+  } catch {
+    return null;
+  }
+}

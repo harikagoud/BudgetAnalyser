@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { NavBar } from '@/components/NavBar';
 import { PageSkeleton } from '@/components/ui/skeleton';
@@ -27,6 +28,12 @@ export function useAuth(): AuthContextValue {
 }
 
 const PUBLIC_PATHS = ['/login', '/register', '/verify-email'];
+// Readable by everyone (signed in or out) and never redirected.
+const LEGAL_PATHS = ['/privacy', '/terms'];
+
+function isLegal(pathname: string): boolean {
+  return LEGAL_PATHS.includes(pathname.replace(/\/+$/, '') || '/');
+}
 
 function isPublic(pathname: string): boolean {
   const p = pathname.replace(/\/+$/, '') || '/';
@@ -66,12 +73,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   const publicPage = isPublic(pathname);
+  const legalPage = isLegal(pathname);
 
   useEffect(() => {
     if (user === undefined) return;
+    if (legalPage) return;
     if (!user && !publicPage) router.replace('/login');
     if (user && publicPage) router.replace('/');
-  }, [user, publicPage, router]);
+  }, [user, publicPage, legalPage, router]);
 
   const setUser = useCallback((u: AuthUser) => setUserState(u), []);
   const signOut = useCallback(async () => {
@@ -87,7 +96,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   let body: React.ReactNode;
-  if (user === undefined) {
+  if (legalPage) {
+    body = children;
+  } else if (user === undefined) {
     body = <PageSkeleton />;
   } else if (publicPage) {
     body = user ? <PageSkeleton /> : children; // signed-in users are bounced to "/"
@@ -99,6 +110,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={value}>
       {user && !publicPage && <NavBar email={user.email} onSignOut={signOut} />}
       <main className="mx-auto max-w-6xl px-6 py-10">{body}</main>
+      <footer className="mx-auto max-w-6xl px-6 pb-8 text-xs text-slate-400">
+        <Link href="/privacy" className="hover:text-slate-600 hover:underline">
+          Privacy
+        </Link>
+        <span aria-hidden> · </span>
+        <Link href="/terms" className="hover:text-slate-600 hover:underline">
+          Terms
+        </Link>
+      </footer>
     </AuthContext.Provider>
   );
 }

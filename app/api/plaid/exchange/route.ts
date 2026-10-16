@@ -23,7 +23,8 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const publicToken = body?.publicToken;
-  const accountName = body?.accountName;
+  const accountName =
+    typeof body?.accountName === 'string' ? body.accountName.trim().slice(0, 120) || 'Linked Account' : body?.accountName;
   const institutionName =
     typeof body?.institutionName === 'string' ? body.institutionName : null;
 
