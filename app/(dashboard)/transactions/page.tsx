@@ -40,6 +40,7 @@ export default function TransactionsPage() {
   const [month, setMonth] = useState<string>(''); // '' = all months
   const [rows, setRows] = useState<TransactionRow[]>([]);
   const [query, setQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>(''); // '' = all categories
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState<string | null>(null);
 
@@ -87,10 +88,30 @@ export default function TransactionsPage() {
     await load();
   }
 
+  // Filter choices come from the loaded rows (with counts), so every option has results
+  // and "Uncategorized" shows up even though it isn't an assignable category.
+  const categoryOptions = useMemo(() => {
+    const counts = new Map<string, { name: string; count: number }>();
+    for (const r of rows) {
+      const entry = counts.get(r.category.id);
+      if (entry) entry.count += 1;
+      else counts.set(r.category.id, { name: r.category.name, count: 1 });
+    }
+    return Array.from(counts, ([id, v]) => ({ id, ...v })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
+
+  // If the chosen category no longer exists in the loaded rows (month changed, or its last
+  // transaction was recategorized), fall back to all categories instead of an empty list.
+  const activeCategory = categoryOptions.some((c) => c.id === categoryFilter) ? categoryFilter : '';
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return q ? rows.filter((r) => r.merchantRaw.toLowerCase().includes(q)) : rows;
-  }, [rows, query]);
+    return rows.filter(
+      (r) =>
+        (!activeCategory || r.category.id === activeCategory) &&
+        (!q || r.merchantRaw.toLowerCase().includes(q)),
+    );
+  }, [rows, query, activeCategory]);
 
   if (loading) return <PageSkeleton />;
 
@@ -124,14 +145,46 @@ export default function TransactionsPage() {
         <Card>
           <CardContent>
             <div className="mb-3 flex flex-col gap-2">
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search merchant…"
-                aria-label="Search merchant"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm sm:max-w-xs"
-              />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search merchant…"
+                  aria-label="Search merchant"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm sm:max-w-xs"
+                />
+                <Select
+                  value={activeCategory}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  aria-label="Filter by category"
+                >
+                  <option value="">All categories</option>
+                  {categoryOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.count})
+                    </option>
+                  ))}
+                </Select>
+                {(activeCategory || query.trim()) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCategoryFilter('');
+                      setQuery('');
+                    }}
+                    className="self-start text-sm font-medium text-brand-600 hover:underline sm:self-auto"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+              {(activeCategory || query.trim()) && (
+                <p className="tabular text-xs text-slate-500">
+                  {visible.length} transaction{visible.length === 1 ? '' : 's'} · total{' '}
+                  {formatCurrency(visible.reduce((sum, t) => sum + t.amount, 0))}
+                </p>
+              )}
               {note && (
                 <p role="status" className="text-sm text-slate-600">
                   {note}
@@ -164,7 +217,7 @@ export default function TransactionsPage() {
             </ul>
             {visible.length > MAX_ROWS && (
               <p className="mt-3 text-xs text-slate-500">
-                Showing the first {MAX_ROWS} of {visible.length}. Pick a month or search to narrow down.
+                Showing the first {MAX_ROWS} of {visible.length}. Pick a month, category or search to narrow down.
               </p>
             )}
             {visible.length === 0 && <p className="text-sm text-slate-500">No matching transactions.</p>}
